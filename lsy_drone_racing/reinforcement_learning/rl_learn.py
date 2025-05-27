@@ -43,7 +43,7 @@ def make_env(seed):
     return _init
 
 def main():
-    num_envs = 1
+    num_envs = 20
     start_time = time.time()
     env_fns = [make_env(seed=i) for i in range(num_envs)]
     vec_env = SubprocVecEnv(env_fns)
@@ -76,11 +76,11 @@ def main():
     #     device="cpu",
     # )
     # 加载模型
-    model = PPO.load(Path(__file__).parent / "log/ppo_final_model", env=vec_env, device="cpu")
+    model = PPO.load(Path(__file__).parent / "log/ppo_final_model_pass_first_gate", env=vec_env, device="cpu")
 
     # === 4. 启动训练 ===
     if num_envs > 1:
-        model.learn(total_timesteps=600000, callback=[checkpoint_callback, eval_callback])
+        model.learn(total_timesteps=400000, callback=[checkpoint_callback, eval_callback])
     else: # for visualization
         render_callback = RenderCallback(render_freq=1)
         model.learn(total_timesteps=20000, callback=[render_callback])

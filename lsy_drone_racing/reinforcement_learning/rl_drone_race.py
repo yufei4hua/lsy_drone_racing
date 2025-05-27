@@ -76,7 +76,7 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         self._tick = 0
         # parameters setting
         self.k_gates = 1.0
-        self.k_center = 0.3
+        self.k_center = 0.2
         self.k_act = 2e-4
         self.k_act_d = 1e-4
         self.k_yaw = 0.02
@@ -193,10 +193,10 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         return r
     
     def _find_leading_waypoint(self, waypoints, pos, t_ahead, curr_gate):
-        cut_idx = [0, 170, 300, 410, -1]
+        cut_idx = [0, 140, 260, 350, -1]
         # find nearest waypoint
         distances = np.linalg.norm(waypoints[self.tick_nearest:cut_idx[curr_gate+1]] - pos, axis=1)
-        draw_line(self, waypoints[self.tick_nearest:cut_idx[curr_gate+1]], rgba=np.array([1.0, 1.0, 1.0, 0.4]))
+        draw_line(self, waypoints[self.tick_nearest:cut_idx[curr_gate+1]+2], rgba=np.array([1.0, 1.0, 1.0, 0.4]))
         self.tick_nearest = np.argmin(distances) + self.tick_nearest
         # find leading waypoint
         tick_leading = min(self.tick_nearest + int(t_ahead * self.freq), len(waypoints) - 1)
