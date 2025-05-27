@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-from readline import read_init_file
 from typing import TYPE_CHECKING, Literal
 
-from matplotlib.pyplot import ticklabel_format
-from networkx import generate_random_paths
 import numpy as np
 from numpy.typing import NDArray
 import gymnasium
@@ -16,7 +13,7 @@ from gymnasium.vector.utils import batch_space
 from packaging.version import Version
 
 from scipy.spatial.transform import Rotation as R
-from lsy_drone_racing.envs.race_core import RaceCoreEnv, build_action_space, build_observation_space
+from lsy_drone_racing.envs.race_core import RaceCoreEnv, build_action_space
 from crazyflow.constants import GRAVITY, MASS
 from crazyflow.sim.physics import ang_vel2rpy_rates
 from lsy_drone_racing.utils import draw_line
