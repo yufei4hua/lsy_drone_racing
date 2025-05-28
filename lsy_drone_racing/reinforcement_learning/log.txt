@@ -16,3 +16,8 @@
 27.05 19:25 -k_imit +k_center +k_gate, 20 envs | 300000 step = 6min 
 27.05 19:40 -k_imit -k_imit_p, 32 envs | 300000 step = 6min 
 27.05 19:50 -k_success, 20 envs | 600000 step = 11min | agent scares of gate 
+27.05 23:57 reset to pass first gate, 20 envs | 400000 step = 10min | fly very high
+28.05 00:16 reset to pass first gate, --r_imit | 400000 step = 9min | not bad, but still crash after passing
+how to do imitation learning? follow points? compare actions? KL-divergence?
+28.05 00:38 train without imitation | 2*6*400000 step = 2h | stopped at 1200000, pass then climb high
+28.05 01:22 +r_vel | 2*6*400000 step = 1.5h | finished race but weird behaviour at 2nd gate
