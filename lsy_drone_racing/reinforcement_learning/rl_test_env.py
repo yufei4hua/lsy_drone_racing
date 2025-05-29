@@ -54,6 +54,10 @@ def test_models(model_paths, num_episodes=999, render=True):
                 print(f"switch to model: {model_paths[current_model_idx].name}")
                 time.sleep(0.3)
 
+            elif keyboard.is_pressed('q'):
+                env.close()
+                return
+
             model = models[current_model_idx]
             action, _states = model.predict(obs, deterministic=True)
             obs, reward, done, info = env.step(action)
@@ -61,7 +65,9 @@ def test_models(model_paths, num_episodes=999, render=True):
             step += 1
 
             if render:
+                fps = 60
                 env.envs[0].render()
+                time.sleep(1/fps)
 
         print(f"Episode {ep + 1}: reward={episode_reward}, steps={step}")
 
@@ -69,11 +75,12 @@ def test_models(model_paths, num_episodes=999, render=True):
 
 if __name__ == "__main__":
     model_paths = [
+        Path(__file__).parent / "log/ppo_final_model",
         # Path(__file__).parent / "log/ppo_final_model_hover_last",
         # Path(__file__).parent / "log/ppo_final_model_gate_center",
-        # Path(__file__).parent / "log/ppo_final_model_pass_first_gate",
+        Path(__file__).parent / "log/ppo_final_model_pass_first_gate",
         # Path(__file__).parent / "log/ppo_final_model_scare_of_gate",
-        # Path(__file__).parent / "log/ppo_final_model_pass_then_climb",
+        Path(__file__).parent / "log/ppo_final_model_pass_then_climb",
         Path(__file__).parent / "log/ppo_final_model_finish_race",
     ]
     test_models(model_paths)

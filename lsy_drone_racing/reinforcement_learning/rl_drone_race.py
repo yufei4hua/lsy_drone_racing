@@ -27,7 +27,7 @@ AutoresetMode = None
 if Version(gymnasium.__version__) >= Version("1.1"):
     from gymnasium.vector import AutoresetMode
 
-IMMITATION_LEARNING = True
+IMMITATION_LEARNING = False
 if IMMITATION_LEARNING:
     from pathlib import Path
     from lsy_drone_racing.utils import load_config
@@ -76,8 +76,9 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         self._tick = 0
         # parameters setting
         self.k_gates = 1.0
+        self.k_gates_direction = 0.1
         self.k_center = 0.2
-        self.k_vel = -0.01
+        self.k_vel = -0.001
         self.k_act = 2e-4
         self.k_act_d = 1e-4
         self.k_yaw = 0.02
@@ -142,10 +143,10 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
             [ half_w, 0.0, -half_h],
         ])
         gate_corners_pos = (self.gate_rot_mat @ corners_local.T).T + obs['gates_pos'][curr_gate]  # shape: (4, 3)
-        draw_line(self, np.stack([gate_corners_pos[0], pos]), rgba=np.array([1.0, 1.0, 1.0, 0.2]))
-        draw_line(self, np.stack([gate_corners_pos[1], pos]), rgba=np.array([1.0, 1.0, 1.0, 0.2]))
-        draw_line(self, np.stack([gate_corners_pos[2], pos]), rgba=np.array([1.0, 1.0, 1.0, 0.2]))
-        draw_line(self, np.stack([gate_corners_pos[3], pos]), rgba=np.array([1.0, 1.0, 1.0, 0.2]))
+        # draw_line(self, np.stack([gate_corners_pos[0], pos]), rgba=np.array([1.0, 1.0, 1.0, 0.2]))
+        # draw_line(self, np.stack([gate_corners_pos[1], pos]), rgba=np.array([1.0, 1.0, 1.0, 0.2]))
+        # draw_line(self, np.stack([gate_corners_pos[2], pos]), rgba=np.array([1.0, 1.0, 1.0, 0.2]))
+        # draw_line(self, np.stack([gate_corners_pos[3], pos]), rgba=np.array([1.0, 1.0, 1.0, 0.2]))
         if self.traj_record.shape[0] >= 2:
             draw_line(self, self.traj_record, rgba=np.array([0.0, 1.0, 0.0, 0.2]))
         
@@ -165,14 +166,31 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         curr_gate = obs['target_gate']
         gate_pos = obs['gates_pos'][curr_gate]
         drone_pos = obs['pos']
+        drone_vel = obs['vel']
         r = 0.15
         if curr_gate != self.prev_gate: # handle gate switching
             self.prev_gate_pos = gate_pos
             r += self.k_success
+        gates_norm = np.array(self.gate_rot_mat[:,1])
+        rel_vec_gate_center = drone_pos-gate_pos
+        r_gates_direction = -self.k_gates_direction * int(np.linalg.norm(rel_vec_gate_center)>0.2) *\
+                            drone_vel.dot(gates_norm) * np.exp(-20*((rel_vec_gate_center.dot(gates_norm))/np.linalg.norm(rel_vec_gate_center))**2)
+        # draw_line(self, np.stack([gate_pos, drone_pos]), rgba=np.array([np.fabs(r_gates_direction) if r_gates_direction<0 else 0.0, np.fabs(r_gates_direction) if r_gates_direction>0 else 0.0, 0.0, 1.0]))
         r_gates = self.k_gates * (np.linalg.norm(self.prev_gate_pos - self.prev_drone_pos) - np.linalg.norm(gate_pos - drone_pos))
         r_center = -self.k_center * np.var(np.linalg.norm(self.rel_pos_gate, axis=1))
         r_act = -self.k_act * np.linalg.norm(act) - self.k_act_d * np.linalg.norm(act - self.prev_act)
-        r_vel = self.k_vel * np.linalg.norm(drone_pos - self.prev_drone_pos)
+        r_vel = self.k_vel * np.linalg.norm(drone_vel)
+        # curriculum at 2nd gate, extra reward for approaching fake goal point
+        if curr_gate == 1:
+            r -= 0.5 * drone_vel[-1] # extra vertical penalty
+            fake_goal = np.array([ 0.8, -1.275,  0.835])
+            draw_line(self, np.stack([fake_goal, drone_pos]), rgba=np.array([0.0, 0.0, 1.0, 0.2]))
+            r += 0.4 * np.exp(-30 * np.linalg.norm(fake_goal - drone_pos)**2) # approaching fake goal
+            r += 1 * (np.linalg.norm(fake_goal - self.prev_drone_pos) - np.linalg.norm(fake_goal - drone_pos)) # approaching fake goal
+            if rel_vec_gate_center.dot(gates_norm) > 0: # I beg you not to go to the other side!
+                r -= 2
+            if drone_pos[-1] > 1.11: # just don't go too high!
+                r -= 2
         r_yaw = -self.k_yaw * np.fabs(R.from_quat(obs['quat']).as_euler('zyx', degrees=False)[0])
         if IMMITATION_LEARNING:
             k_imit_p, k_imit_d = 0.3, 1.0
@@ -194,7 +212,7 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         self.prev_gate = curr_gate
         self.prev_gate_pos = gate_pos
         self.prev_drone_pos = drone_pos
-        r += r_gates + r_center + r_act + r_vel + r_yaw
+        r += r_gates + r_gates_direction + r_center + r_act + r_vel + r_yaw
         return r
     
     def _find_leading_waypoint(self, waypoints, pos, t_ahead, curr_gate):

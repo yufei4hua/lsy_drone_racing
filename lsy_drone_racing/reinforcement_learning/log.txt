@@ -21,3 +21,12 @@
 how to do imitation learning? follow points? compare actions? KL-divergence?
 28.05 00:38 train without imitation | 2*6*400000 step = 2h | stopped at 1200000, pass then climb high
 28.05 01:22 +r_vel | 2*6*400000 step = 1.5h | finished race but weird behaviour at 2nd gate
+28.05 21:55 level2 +r_gates_direction | 4*400000 step = 35min | learnt to fly slowly, success rate increased in level2
+28.05 22:50 +r_gates_direction | 2*400000 step = 17min | better but cannot get rid of this behaviour
+28.05 23:20 reset to model_gate_center +r_gates_direction | 2*470588 step = 20min | chaos, not passing the first gate
+28.05 23:58 reset to pass_first_gate -r_gates_direction +r_vel(addtionally penalize vertical) | 2*470588 step = 20min | hover in front of the gate 
+29.05 00:24 reset to pass_first_gate -r_gates_direction(k & effective angle) | 2*470588 step = 20min | not working
+29.05 01:52 reset to pass_first_gate +r_vertical_vel +r_fake_goal | 1*470588 step = 10min |
+
+
+
