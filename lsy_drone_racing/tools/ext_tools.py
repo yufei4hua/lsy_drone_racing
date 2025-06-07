@@ -107,6 +107,7 @@ class TrajectoryTool:
             # terminal condition
             if np.std(segment_length) <= epsilon:
                 return trajectory
+        return trajectory
             
     def extend_trajectory(self, trajectory: CubicSpline, extend_length:float = 1):
         """takes an arbirary 3D trajectory and extend it in the direction of terminal derivative."""

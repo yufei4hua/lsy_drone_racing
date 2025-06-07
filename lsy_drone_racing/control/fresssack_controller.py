@@ -4,6 +4,8 @@ from typing import List, Dict, Tuple, Set, Union, Callable, Optional
 import pandas as pd
 import os
 import atexit
+from pinocchio import YAxis
+
 LOCAL_MODE = False
 try:
     import matplotlib.pyplot as plt
@@ -743,3 +745,69 @@ class FresssackController(Controller):
     def episode_callback(self):
         self.ego_pose_tx.destroy_node()
         return super().episode_callback()
+
+    def _gen_gate_capsule(self) -> List[tuple[np.ndarray, np.ndarray, float]]:
+        """generate capsule for gates, put all capsules of all gates in one list
+        Returns:
+            List of (a, b, r) tuples
+        """
+        capsule_list = []
+
+        for gate in self.gates:
+            center = gate.pos
+            x_axis = gate.plane_vec
+            y_axis = gate.norm_vec
+            z_axis = np.cross(x_axis, y_axis)
+
+            half_w = (gate.inner_width + gate.outer_width) / 4
+            half_h = (gate.inner_height + gate.outer_height) / 4
+
+            corner_offsets = [
+                +half_w * x_axis + half_h * z_axis,  # LU
+                -half_w * x_axis + half_h * z_axis,  # RU
+                -half_w * x_axis - half_h * z_axis,  # RB
+                +half_w * x_axis - half_h * z_axis,  # LB
+            ]
+            # center_offset = -0.2 * y_axis # EXP: move every gates forward a little bit
+
+            # [(0→1), (1→2), (2→3), (3→0)]
+            for i in range(4):
+                a = center + corner_offsets[i]
+                b = center + corner_offsets[(i + 1) % 4]
+                r = gate.thickness
+                capsule_list.append((a, b, r))
+
+        return capsule_list
+    
+    def _gen_pillar_capsule(self) -> List[tuple[np.ndarray, np.ndarray, float]]:
+        """init pillar capsule from self.obstacles
+        Returns:
+            List of (a, b, r) tuples, where:
+                - a: 3D numpy array, bottom center of capsule
+                - b: 3D numpy array, top center of capsule (3m above a)
+                - r: float, capsule radius
+        """
+        capsule_list = []
+        for obst in self.obstacles:
+            a = obst.pos.copy()
+            b = obst.pos.copy()
+            a[2] = 0.0  # set to ground
+            b[2] = 3.0  # default height
+            r = obst.safe_radius
+            capsule_list.append((a, b, r))
+        return capsule_list
+    
+    def get_capsule_param(self) -> NDArray[np.floating]:
+        """put all capsules into a flat array to write to model.p
+        Returns:
+            NDArray of capsules parameters like [a, b, r, a, b, r, ...]
+        """
+        capsule_list = self._gen_gate_capsule() + self._gen_pillar_capsule()
+
+        capsule_params = []
+        for a, b, r in capsule_list:
+            capsule_params.extend(a.tolist())
+            capsule_params.extend(b.tolist())
+            capsule_params.append(float(r))
+
+        return np.array(capsule_params, dtype=np.float32)
