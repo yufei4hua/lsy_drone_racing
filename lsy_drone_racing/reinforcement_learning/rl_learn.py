@@ -5,31 +5,20 @@ from stable_baselines3.common.vec_env import SubprocVecEnv
 from torch import nn
 from datetime import datetime
 import os
+import re
 from pathlib import Path
 import time
 from docs import conf
 from lsy_drone_racing.utils import load_config
-from lsy_drone_racing.reinforcement_learning.rl_drone_race import RLDroneRaceEnv, RenderCallback
+from lsy_drone_racing.reinforcement_learning.rl_drone_race import RLDroneRaceEnv, RLDroneHoverEnv, RenderCallback
 
 # === 1. 创建训练环境 ===
-# config = load_config(Path(__file__).parents[2] / "config" / "levelrl.toml")
 
-# env = RLDroneRaceEnv = gymnasium.make(
-#         config.env.id,
-#         freq=config.env.freq,
-#         sim_config=config.sim,
-#         sensor_range=config.env.sensor_range,
-#         control_mode=config.env.control_mode,
-#         track=config.env.track,
-#         disturbances=config.env.get("disturbances"),
-#         randomizations=config.env.get("randomizations"),
-#         seed=config.env.seed,
-#     )
-# env = JaxToNumpy(env)
 def make_env(seed):
     def _init():
         config = load_config(Path(__file__).parents[2] / "config/levelrl.toml")
-        env = RLDroneRaceEnv(
+        env = RLDroneHoverEnv( # single gate env
+        # env = RLDroneRaceEnv( # racing env
             freq=config.env.freq,
             sim_config=config.sim,
             track=config.env.track,
@@ -42,14 +31,27 @@ def make_env(seed):
         return env
     return _init
 
+def get_latest_model_path(log_dir: str, lesson: int) -> tuple[Path, int]:
+    log_path = Path(log_dir)
+    pattern = re.compile(rf"ppo_final_model_{lesson}_(\d+)\.zip")
+
+    model_files = [(f, int(m.group(1))) for f in log_path.glob(f"ppo_final_model_{lesson}_*.zip")
+                   if (m := pattern.match(f.name))] 
+
+    if not model_files:
+        raise FileNotFoundError(f"No model found for lesson {lesson} in {log_path}")
+
+    latest_file, max_idx = max(model_files, key=lambda x: x[1])
+    return latest_file, max_idx
+
 def main():
-    num_envs = 1
+    num_envs = 20
     start_time = time.time()
     env_fns = [make_env(seed=i) for i in range(num_envs)]
     vec_env = SubprocVecEnv(env_fns)
 
     # === 2. 设置训练保存目录和回调 ===
-    log_dir = Path(__file__).parent / "log"
+    log_dir = Path(__file__).parent / "log2"
     os.makedirs(log_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -63,7 +65,7 @@ def main():
     # )
     # model = PPO(
     #     policy="MlpPolicy",
-    #     env=env,
+    #     env=vec_env,
     #     verbose=1,
     #     tensorboard_log=log_dir,
     #     policy_kwargs=policy_kwargs,
@@ -76,19 +78,24 @@ def main():
     #     device="cpu",
     # )
     # 加载模型
-    model = PPO.load(Path(__file__).parent / "log/model_20250528_012747_3000000_steps", env=vec_env, device="cpu")
+    lesson = 1
+    latest_model_path, lesson_train_idx = get_latest_model_path(Path(__file__).parent / "log2", lesson)
+    lesson_train_idx += 1
+    print(f"Learning Lesson {lesson}.{lesson_train_idx}")
+    model = PPO.load(latest_model_path, env=vec_env, device="cpu")
+    # model = PPO.load(Path(__file__).parent / "log2/ppo_final_model_1_9", env=vec_env, device="cpu")
 
     # === 4. 启动训练 ===
     if num_envs > 1:
-        model.learn(total_timesteps=2*6*400000, callback=[checkpoint_callback, eval_callback])
+        model.learn(total_timesteps=400000, callback=[checkpoint_callback, eval_callback])
     else: # for visualization
         render_callback = RenderCallback(render_freq=1)
-        model.learn(total_timesteps=20000, callback=[render_callback])
+        model.learn(total_timesteps=10000, callback=[render_callback])
 
     # === 5. 保存最终模型 ===
-    model.save(f"{log_dir}/ppo_final_model")
+    model.save(f"{log_dir}/ppo_final_model_{lesson}_{lesson_train_idx}")
     end_time = time.time()
-    print(f"✅ 训练完成，耗时{end_time - start_time}s ，模型已保存至 {log_dir}")
+    print(f"✅ 训练完成，耗时{end_time - start_time}s ，模型已保存至 ppo_final_model_{lesson}_{lesson_train_idx}")
 
 
 if __name__ == "__main__":
