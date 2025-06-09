@@ -15,9 +15,9 @@ from lsy_drone_racing.reinforcement_learning.rl_drone_race import RLDroneRaceEnv
 
 def make_env(seed):
     def _init():
-        config = load_config(Path(__file__).parents[2] / "config/levelrl_single_gate.toml")
-        env = RLDroneHoverEnv(
-        # env = RLDroneRaceEnv(
+        config = load_config(Path(__file__).parents[2] / "config/levelrl.toml")
+        # env = RLDroneHoverEnv(
+        env = RLDroneRaceEnv(
             freq=config.env.freq,
             sim_config=config.sim,
             track=config.env.track,
@@ -30,17 +30,23 @@ def make_env(seed):
         return env
     return _init
 
-def get_latest_model_path(log_dir: str, lesson: int) -> tuple[Path, int]:
+def get_latest_model_path(log_dir: str, lesson: int, idx: int = None) -> tuple[Path, int]:
     log_path = Path(log_dir)
     pattern = re.compile(rf"ppo_final_model_{lesson}_(\d+)\.zip")
 
     model_files = [(f, int(m.group(1))) for f in log_path.glob(f"ppo_final_model_{lesson}_*.zip")
-                   if (m := pattern.match(f.name))] 
+                   if (m := pattern.match(f.name))]
 
     if not model_files:
         raise FileNotFoundError(f"No model found for lesson {lesson} in {log_path}")
-
+    
     latest_file, max_idx = max(model_files, key=lambda x: x[1])
+
+    if idx is not None:
+        for f, n in model_files:
+            if n == idx:
+                return f, n
+        raise FileNotFoundError(f"Model ppo_final_model_{lesson}_{idx}.zip not found in {log_path}")
     return latest_file, max_idx
 
 def test_models(model_paths, num_episodes=999, render=True):
@@ -93,8 +99,8 @@ def test_models(model_paths, num_episodes=999, render=True):
     
 
 if __name__ == "__main__":
-    lesson = 2
-    latest_model_path, lesson_train_idx = get_latest_model_path(Path(__file__).parent / "log2", lesson)
+    lesson = 3
+    latest_model_path, lesson_train_idx = get_latest_model_path(Path(__file__).parent / "log2", lesson, idx=0)
     print(f"Testing Lesson {lesson}.{lesson_train_idx}")
     model_paths = [
         latest_model_path,

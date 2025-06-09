@@ -17,8 +17,8 @@ from lsy_drone_racing.reinforcement_learning.rl_drone_race import RLDroneRaceEnv
 def make_env(seed):
     def _init():
         config = load_config(Path(__file__).parents[2] / "config/levelrl.toml")
-        env = RLDroneHoverEnv( # single gate env
-        # env = RLDroneRaceEnv( # racing env
+        # env = RLDroneHoverEnv( # single gate env
+        env = RLDroneRaceEnv( # racing env
             freq=config.env.freq,
             sim_config=config.sim,
             track=config.env.track,
@@ -31,18 +31,24 @@ def make_env(seed):
         return env
     return _init
 
-def get_latest_model_path(log_dir: str, lesson: int) -> tuple[Path, int]:
+def get_latest_model_path(log_dir: str, lesson: int, idx: int = None) -> tuple[Path, int]:
     log_path = Path(log_dir)
     pattern = re.compile(rf"ppo_final_model_{lesson}_(\d+)\.zip")
 
     model_files = [(f, int(m.group(1))) for f in log_path.glob(f"ppo_final_model_{lesson}_*.zip")
-                   if (m := pattern.match(f.name))] 
+                   if (m := pattern.match(f.name))]
 
     if not model_files:
         raise FileNotFoundError(f"No model found for lesson {lesson} in {log_path}")
-
+    
     latest_file, max_idx = max(model_files, key=lambda x: x[1])
-    return latest_file, max_idx
+
+    if idx is not None:
+        for f, n in model_files:
+            if n == idx:
+                return f, max_idx+1
+        raise FileNotFoundError(f"Model ppo_final_model_{lesson}_{idx}.zip not found in {log_path}")
+    return latest_file, max_idx+1
 
 def main():
     num_envs = 20
@@ -78,16 +84,16 @@ def main():
     #     device="cpu",
     # )
     # 加载模型
-    lesson = 1
-    latest_model_path, lesson_train_idx = get_latest_model_path(Path(__file__).parent / "log2", lesson)
-    lesson_train_idx += 1
+    lesson = 3
+    model_idx = 0 # default None, use if need reset to earlier model
+    latest_model_path, lesson_train_idx = get_latest_model_path(Path(__file__).parent / "log2", lesson, idx=model_idx)
     print(f"Learning Lesson {lesson}.{lesson_train_idx}")
     model = PPO.load(latest_model_path, env=vec_env, device="cpu")
     # model = PPO.load(Path(__file__).parent / "log2/ppo_final_model_1_9", env=vec_env, device="cpu")
 
     # === 4. 启动训练 ===
     if num_envs > 1:
-        model.learn(total_timesteps=400000, callback=[checkpoint_callback, eval_callback])
+        model.learn(total_timesteps=24*400000, callback=[checkpoint_callback, eval_callback])
     else: # for visualization
         render_callback = RenderCallback(render_freq=1)
         model.learn(total_timesteps=10000, callback=[render_callback])
