@@ -1,6 +1,10 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
-from typing import List, Dict, Tuple, Set, Union
+from typing import List, Dict, Tuple, Set, Union, Callable, Optional
+import pandas as pd
+import os
+import atexit
+from pinocchio import YAxis
 
 LOCAL_MODE = False
 try:
@@ -10,6 +14,21 @@ try:
     LOCAL_MODE = True
 except:
     LOCAL_MODE = False
+
+ROS_AVAILABLE = False
+try:
+    import rclpy
+    from rclpy.node import Node
+    from rclpy.publisher import Publisher
+    from rclpy.publisher import MsgType
+    from geometry_msgs.msg import PoseStamped, TransformStamped
+    from nav_msgs.msg import Path
+    from tf2_ros import TransformBroadcaster
+    from transformations import quaternion_from_euler, euler_from_quaternion
+    from visualization_msgs.msg import Marker
+    ROS_AVAILABLE = True
+except:
+    ROS_AVAILABLE = False
 
 
 import numpy as np
@@ -30,11 +49,195 @@ from lsy_drone_racing.tools.planners.occupancy_map import OccupancyMap3D
 
 
 
+
+class ControllerROSTx(Node):
+    pub : Publisher
+    def __init__(self,
+                 node_name : str,
+                 msg_type : MsgType,
+                 topic_name : str,
+                 queue_size : np.integer = 10,
+                 ):
+        super().__init__(node_name = node_name)
+
+        self.pub : Publisher = self.create_publisher(msg_type = msg_type, topic = topic_name, qos_profile = queue_size)
+    
+    def process_data(self, raw_data)-> MsgType:
+        raise NotImplementedError()
+    
+    def publish(self, raw_data : Union[MsgType, NDArray[np.floating], List[NDArray[np.floating]]]):
+        self.pub.publish(msg = self.process_data(raw_data))
+
+class TFTx(Node):
+    br : TransformBroadcaster
+    child_frame_id : str
+    def __init__(self,
+                 node_name : str,
+                 topic_name : str,
+                 ):
+        super().__init__(node_name = node_name)
+        self.child_frame_id = topic_name
+        self.br = TransformBroadcaster(self)
+    def publish(self,  raw_data : Dict[str, Union[str, NDArray]]):
+        pos = np.array(raw_data['pos'], dtype=float)
+        quat = np.array(raw_data.get('quat', [0, 0, 0, 1]), dtype=float)
+
+        t = TransformStamped()
+        t.header.stamp = self.get_clock().now().to_msg()
+        t.header.frame_id = str(raw_data.get('frame_id', 'map'))
+        t.child_frame_id = str(raw_data.get('child_frame_id', self.child_frame_id))
+
+        t.transform.translation.x = float(pos[0])
+        t.transform.translation.y = float(pos[1])
+        t.transform.translation.z = float(pos[2])
+
+        t.transform.rotation.x = float(quat[0])
+        t.transform.rotation.y = float(quat[1])
+        t.transform.rotation.z = float(quat[2])
+        t.transform.rotation.w = float(quat[3])
+
+        self.br.sendTransform(t)
+
+class PathTx(ControllerROSTx):
+    def __init__(self,
+                 node_name : str,
+                 topic_name : str,
+                 queue_size : np.integer):
+        super().__init__(node_name, Path, topic_name, queue_size)
+
+    def process_data(self, raw_data : Dict[str, NDArray])-> MsgType:
+        traj = raw_data['traj']
+        quat = raw_data.get('quat', [[0,0,0,1] for i in range(len(traj))])
+        frame_id = str(raw_data.get('frame_id', 'map'))
+        msg = Path()
+        stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = str(frame_id)
+        msg.header.stamp = stamp
+        for idx, pos in enumerate(traj):
+            pose_msg = PoseStamped()
+            pose_msg.header.stamp = stamp
+            pose_msg.header.frame_id = str(frame_id)
+
+            pose_msg.pose.position.x = float(pos[0])
+            pose_msg.pose.position.y = float(pos[1])
+            pose_msg.pose.position.z = float(pos[2])
+
+            pose_msg.pose.orientation.x = float(quat[idx][0])
+            pose_msg.pose.orientation.y = float(quat[idx][1])
+            pose_msg.pose.orientation.z = float(quat[idx][2])
+            pose_msg.pose.orientation.w = float(quat[idx][3])
+            
+            msg.poses.append(pose_msg)
+        return msg
+    
+
+class PoseTx(ControllerROSTx):
+    def __init__(self,
+                 node_name : str,
+                 topic_name : str,
+                 queue_size : np.integer):
+        super().__init__(node_name, PoseStamped, topic_name, queue_size)
+
+    def process_data(self, raw_data : Dict[str, NDArray])-> MsgType:
+        pos = raw_data['pos']
+        quat = raw_data.get('quat', [0,0,0,1])
+
+        msg = PoseStamped()
+
+        msg.header.stamp = self.get_clock().now().to_msg()
+
+        msg.header.frame_id = str(raw_data.get('frame_id', 'map'))
+       
+        msg.pose.position.x = float(pos[0])
+        msg.pose.position.y = float(pos[1])
+        msg.pose.position.z = float(pos[2])
+
+        msg.pose.orientation.x = float(quat[0])
+        msg.pose.orientation.y = float(quat[1])
+        msg.pose.orientation.z = float(quat[2])
+        msg.pose.orientation.w = float(quat[3])
+
+        return msg
+
+class MeshMarkerTx(ControllerROSTx):
+    name : str
+    mesh_url : List[str]
+    frame_id : str
+    def __init__(self,
+                 node_name : str,
+                 topic_name : str,
+                 queue_size : np.integer,
+                 frame_id : str,
+                 mesh_path : Union[List[str], str]):
+        super().__init__(node_name, Marker, topic_name, queue_size)
+        self.name = node_name
+        self.frame_id = frame_id
+        if isinstance(mesh_path, str):
+            self.mesh_url = ['file://' + os.path.abspath(mesh_path)]
+        else:
+            self.mesh_url = ['file://' + os.path.abspath(path) for path in mesh_path]
+
+    def process_data(self, raw_data : Dict[str, NDArray])-> MsgType:
+        idx = 0
+        if raw_data is not None:
+            idx = raw_data.get('idx', 0)
+        marker = Marker()
+        marker.header.frame_id = self.frame_id
+        marker.header.stamp = self.get_clock().now().to_msg()
+
+        marker.ns = self.name
+        marker.id = 0
+        marker.type = Marker.MESH_RESOURCE
+        marker.action = Marker.ADD
+
+        marker.mesh_resource = self.mesh_url[idx]
+        marker.mesh_use_embedded_materials = True
+
+        # Scales
+        marker.scale.x = 1.0
+        marker.scale.y = 1.0
+        marker.scale.z = 1.0
+
+        marker.color.a = 1.0
+
+        marker.pose.orientation.w = 1.0
+
+        return marker
+
+
+
 class FresssackController(Controller):
     """Controller base class with predifined functions for further development! """
+    pos : NDArray[np.floating]
+    vel : NDArray[np.floating]
+    quat : NDArray[np.floating]
+    gates : List[Gate]
+    obstacles : List[Obstacle]
+    gates_visited : List[bool]
+    obstacles_visited : List[bool]
 
+    log_file : bool
+    log : Dict[str, Union[List[np.floating], List[np.integer], List[np.NDArray[np.integer]], List[np.NDArray[np.floating]], List[np.NDArray[np.bool]]]]
+    data_log_freq : np.floating
+    data_log_path : str
+    data_log_keys : List[str]
+    _data_log_internal_freq : np.integer
 
-    def __init__(self, obs: dict[str, NDArray[np.floating]], info: dict, config: dict):
+    ros_tx : bool
+    ego_pose_tx : PoseTx
+    ego_TF_tx : TFTx
+    drone_marker_tx : MeshMarkerTx
+    ros_tx_freq : np.floating
+    ros_tx_freq_slow : np.floating
+    _ros_tx_internal_freq : np.integer
+    _ros_tx_internal_freq_slow : np.integer
+    def __init__(self, obs: Dict[str, NDArray[np.floating]],
+                info: dict,
+                config: dict,
+                env = None,
+                data_log : dict = None,
+                ros_tx_freq : Optional[np.floating] = None, 
+                ros_tx_freq_slow : Optional[np.floating] = 10.0):
         """Initialization of the controller.
 
         Args:
@@ -52,27 +255,74 @@ class FresssackController(Controller):
         self._tick = 0
         self._freq = config.env.freq
         self._finished = False
+        self.gates = []
+        self.obstacles = []
+        self.init_states(obs = obs)
+        if data_log is not None:
+            self.log_file = True
+            self.data_log_freq = data_log['freq']
+            self.data_log_path = data_log['path']
+            self.data_log_keys = data_log['keys']
+            self.current_log_frame = None
+            self._data_log_internal_freq = max(int(abs(self._freq / self.data_log_freq)), 1)
+            self.log = dict()
+            for key in list(obs.keys()) + self.data_log_keys:
+                self.log[key] = []
+            atexit.register(self.write_log)
+        else:
+            self.log_file = False
+        
+        if ROS_AVAILABLE and ros_tx_freq is not None:
+            self.ros_tx = True
+            try:
+                rclpy.init()
+            except:
+                pass
+            self.ros_tx_freq = ros_tx_freq
+            self.ros_tx_freq_slow = ros_tx_freq_slow
+            self._ros_tx_internal_freq = max(int(abs(self._freq / self.ros_tx_freq)), 1)
+            self._ros_tx_internal_freq_slow = max(int(abs(self._freq / self.ros_tx_freq_slow)), 1)
+            self.ego_pose_tx = PoseTx(
+                node_name = 'ego_pose_tx',
+                topic_name = 'drone_pose',
+                queue_size = 10
+            )
+            self.ego_TF_tx = TFTx(
+                node_name = 'ego_TF_tx',
+                topic_name = 'drone'
+            )
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            drone_mesh_file = os.path.join(current_dir, '..', 'ros', 'rviz','meshes', 'crazy_flies.dae')
+            self.drone_marker_tx = MeshMarkerTx(
+                node_name = 'drone_marker_tx',
+                topic_name = 'drone_marker',
+                mesh_path = os.path.abspath(drone_mesh_file),
+                frame_id = 'drone',
+                queue_size = 1
+            )
+            ground_mesh_file = os.path.join(current_dir, '..', 'ros', 'rviz','meshes', 'ground.dae')
 
-        # self.init_gates(obs = obs,
-        #                  gate_inner_size = [0.4,0.4,0.4,0.4],
-        #                  gate_outer_size = [0.6,0.6,0.6,0.6],
-        #                  gate_safe_radius = [0.4,0.4,0.4,0.4],
-        #                  entry_offset = [0.3,0.7,0.4,0.1],
-        #                  exit_offset = [0.8,1.0,0.1,0.2],
-        #                  thickness = [0.4, 0.4, 0.1, 0.1])
-        # self.init_obstacles(obs = obs,
-        #                     obs_safe_radius = [0.2,0.2,0.2,0.2])
-        # self.init_states(obs = obs)
-
+            self.ground_marker_tx = MeshMarkerTx(
+                node_name = 'ground_marker_tx',
+                topic_name = 'ground_marker',
+                mesh_path = os.path.abspath(ground_mesh_file),
+                frame_id = 'map',
+                queue_size = 1
+            )
+        else:
+            self.ros_tx = False
         
         
     
     def init_states(self, obs : Dict[str, np.ndarray],):
         self.pos = obs['pos']
         self.vel = obs['vel']
+        self.quat = obs['quat']
         self.last_pos = self.pos
-        self.current_t = 0.0
+        self.current_t = np.float64(0.0)
         self.next_gate = 0
+        self.gates_visited = obs['gates_visited']
+        self.obstacles_visited = obs['obstacles_visited']
 
     def init_gates(self, obs : Dict[str, np.ndarray],
                     
@@ -141,7 +391,7 @@ class FresssackController(Controller):
                                 outer_width = self.gate_outer_size[i],
                                 outer_height = self.gate_outer_size[i],
                                 safe_radius = self.gate_safe_radius[i],
-                                entry_offset = self.gate_exit_offset[i],
+                                entry_offset = self.gate_entry_offset[i],
                                 exit_offset = self.gate_exit_offset[i],
                                 thickness = self.gate_thickness[i],
                                 vel_limit = self.gate_vel_limit[i]
@@ -188,8 +438,28 @@ class FresssackController(Controller):
             plt.pause(0.001)
         return fig, ax
 
+    def visualize_spline_trajectory(self, fig: figure.Figure, ax: axes.Axes, trajectory: CubicSpline, t_start : np.float32, t_end :np.float32, color='red') -> Tuple[figure.Figure, axes.Axes]:
+        if hasattr(self, '_last_traj_plot') and self._last_traj_plot is not None:
+            try:
+                self._last_traj_plot.remove()
+            except:
+                pass
+
+        if fig is None or ax is None:
+            fig = plt.figure()
+            ax = fig.add_subplot(111, projection='3d')
+
+        t_samples = np.linspace(t_start, t_end, int((t_end - t_start)/ 0.05))
+        xyz = trajectory(t_samples)
+
+        self._last_traj_plot = ax.plot(xyz[:, 0], xyz[:, 1], xyz[:, 2], color=color, linewidth=2, label='Trajectory')[0]
+
+        ax.legend()
+        plt.pause(0.001)
+        return fig, ax
 
     def visualize_trajectory(fig: figure.Figure, ax: axes.Axes, trajectory: CubicSpline, t_start : np.float32, t_end :np.float32, color='red') -> Tuple[figure.Figure, axes.Axes]:
+        
         if fig is None or ax is None:
             fig = plt.figure()
             ax = fig.add_subplot(111, projection='3d')
@@ -271,15 +541,57 @@ class FresssackController(Controller):
     #     self.track_t = t_target
     #     return traj_points[idx_target]
 
-
+    def add_log_frame(self):
+        if self.current_log_frame is not None:
+            for key, val in self.log.items():
+                if key not in self.current_log_frame.keys():
+                    val.append(val[-1])
+                else:
+                    val.append(self.current_log_frame[key])
+    def need_log_file(self) -> bool:
+        return self.log_file and (self._tick % self._data_log_internal_freq == 0)
+    def need_ros_tx(self, slow = False) -> bool:
+        return self.ros_tx and (((self._tick % self._ros_tx_internal_freq) == 0) if not slow else ((self._tick % self._ros_tx_internal_freq_slow) == 0))
+    
     def step_update(self, obs : Dict[str, np.ndarray]) -> None:
         self.last_pos = self.pos
         self.pos = obs['pos']
+        self.quat = obs['quat']
         self.vel = obs['vel']
         self.current_t += 1.0 / self._freq
+
+        if self.need_log_file():
+            # Add last log frame
+            self.add_log_frame()
+            self.current_log_frame = {
+                't' : self.current_t
+            }
+            for key, val in obs.items():
+                self.current_log_frame[key] = val
+
+        if self.need_ros_tx(): 
+            # self.ego_pose_tx.publish(
+            #     raw_data = 
+            #     {
+            #         'pos' : self.pos,
+            #         'quat' : self.quat,
+            #         'frame_id' : 'map'
+            #     }
+            # )
+            self.ego_TF_tx.publish(
+                raw_data = 
+                {
+                    'pos' : self.pos,
+                    'quat' : self.quat,
+                    'frame_id' : 'map'
+                }
+            )
+            self.drone_marker_tx.publish(None)
+        if self.need_ros_tx(slow = True):
+            self.ground_marker_tx.publish(None)
         self._tick += 1
 
-
+    
     
     def check_gate_change(self, gates_visited: List[bool])->Tuple[bool, List[bool]]:
         result = []
@@ -307,7 +619,13 @@ class FresssackController(Controller):
     def update_obstacles(self, obst_idx : int, obst_pnt : np.array) -> None:
         self.obstacles[obst_idx].pos = obst_pnt
 
+    def update_target_gate(self, obs) -> bool:
+        result = self.next_gate != obs['target_gate']
+        self.next_gate = obs['target_gate']
+        return result
+
     def update_next_gate(self, distance = 0.5) -> bool:
+        # Older version for detecting gate change!
         if not self.next_gate <= len(self.gates):
             return False
         if np.linalg.norm(self.pos - (self.gates[self.next_gate].pos)) > distance:
@@ -318,7 +636,7 @@ class FresssackController(Controller):
         dot_0 = np.dot(v_0, self.gates[self.next_gate].norm_vec)
         dot_1 = np.dot(v_1, self.gates[self.next_gate].norm_vec)
         if(dot_0 * dot_1 < 0):
-            self.next_gate += 1
+            self.next_gate = self.next_gate + 1 if self.next_gate < len(self.gates) - 1 else self.next_gate
             print('Next Gate:' + str(self.next_gate))
             return True
         else:
@@ -377,3 +695,119 @@ class FresssackController(Controller):
         vel_list = [data[i, [vx_idx, vy_idx, vz_idx]] for i in range(data.shape[0])] if has_velocity else []
 
         return t_list, pos_list, vel_list
+    
+    def add_log(self, key : str, val) -> bool:
+        if key in self.log.keys() and self.current_log_frame is not None:
+            self.current_log_frame[key] = val
+            return True
+        else:
+            return False
+    
+    def write_log(self) -> bool:
+        try:
+            npz_path = self.data_log_path + ".npz"
+            npz_dict = {}
+
+            for key, value in self.log.items():
+                arr = np.array(value)
+                if arr.dtype == object:
+                    try:
+                        arr = np.stack(value)
+                    except Exception:
+                        arr = np.array(value, dtype=object)
+                npz_dict[key] = arr
+
+            os.makedirs(os.path.dirname(npz_path), exist_ok=True)
+            np.savez_compressed(npz_path, **npz_dict)
+
+            csv_path = self.data_log_path + ".csv"
+            df_data = {}
+
+            for key, value in self.log.items():
+                arr = np.array(value)
+                if arr.ndim == 1:
+                    df_data[key] = arr
+                elif arr.ndim == 2:
+                    for i in range(arr.shape[1]):
+                        df_data[f"{key}_{i}"] = arr[:, i]
+                else:
+                    continue
+
+            df = pd.DataFrame(df_data)
+            df.to_csv(csv_path, index=False)
+
+            return True
+
+        except Exception as e:
+            print(f"[write_log] Failed to write log: {e}")
+            return False
+    
+    def episode_callback(self):
+        self.ego_pose_tx.destroy_node()
+        return super().episode_callback()
+
+    def _gen_gate_capsule(self) -> List[tuple[np.ndarray, np.ndarray, float]]:
+        """generate capsule for gates, put all capsules of all gates in one list
+        Returns:
+            List of (a, b, r) tuples
+        """
+        capsule_list = []
+
+        for gate in self.gates:
+            center = gate.pos
+            x_axis = gate.plane_vec
+            y_axis = gate.norm_vec
+            z_axis = np.cross(x_axis, y_axis)
+
+            half_w = (gate.inner_width + gate.outer_width) / 4
+            half_h = (gate.inner_height + gate.outer_height) / 4
+
+            corner_offsets = [
+                +half_w * x_axis + half_h * z_axis,  # LU
+                -half_w * x_axis + half_h * z_axis,  # RU
+                -half_w * x_axis - half_h * z_axis,  # RB
+                +half_w * x_axis - half_h * z_axis,  # LB
+            ]
+            # center_offset = -0.2 * y_axis # EXP: move every gates forward a little bit
+
+            # [(0→1), (1→2), (2→3), (3→0)]
+            for i in range(4):
+                a = center + corner_offsets[i]
+                b = center + corner_offsets[(i + 1) % 4]
+                r = gate.thickness
+                capsule_list.append((a, b, r))
+
+        return capsule_list
+    
+    def _gen_pillar_capsule(self) -> List[tuple[np.ndarray, np.ndarray, float]]:
+        """init pillar capsule from self.obstacles
+        Returns:
+            List of (a, b, r) tuples, where:
+                - a: 3D numpy array, bottom center of capsule
+                - b: 3D numpy array, top center of capsule (3m above a)
+                - r: float, capsule radius
+        """
+        capsule_list = []
+        for obst in self.obstacles:
+            a = obst.pos.copy()
+            b = obst.pos.copy()
+            a[2] = 0.0  # set to ground
+            b[2] = 3.0  # default height
+            r = obst.safe_radius
+            capsule_list.append((a, b, r))
+        return capsule_list
+    
+    def get_capsule_param(self) -> NDArray[np.floating]:
+        """put all capsules into a flat array to write to model.p
+        Returns:
+            NDArray of capsules parameters like [a, b, r, a, b, r, ...]
+        """
+        capsule_list = self._gen_gate_capsule() + self._gen_pillar_capsule()
+
+        capsule_params = []
+        for a, b, r in capsule_list:
+            capsule_params.extend(a.tolist())
+            capsule_params.extend(b.tolist())
+            capsule_params.append(float(r))
+
+        return np.array(capsule_params, dtype=np.float32)

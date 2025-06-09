@@ -34,7 +34,7 @@ from stable_baselines3 import PPO
 class RLController(Controller):
     """Trajectory controller following a pre-defined trajectory."""
 
-    def __init__(self, obs: dict[str, NDArray[np.floating]], info: dict, config: dict):
+    def __init__(self, obs: dict[str, NDArray[np.floating]], info: dict, config: dict, env=None):
         """Initialization of the controller.
 
         Args:

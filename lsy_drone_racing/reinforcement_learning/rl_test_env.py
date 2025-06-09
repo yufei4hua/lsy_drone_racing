@@ -1,16 +1,22 @@
 import gymnasium
+import re
 from pathlib import Path
 import numpy as np
-import keyboard
+try:
+    import keyboard
+    KEYBOARD=True
+except:
+    KEYBOARD=False
 import time
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
 from lsy_drone_racing.utils import load_config
-from lsy_drone_racing.reinforcement_learning.rl_drone_race import RLDroneRaceEnv
+from lsy_drone_racing.reinforcement_learning.rl_drone_race import RLDroneRaceEnv, RLDroneHoverEnv
 
 def make_env(seed):
     def _init():
         config = load_config(Path(__file__).parents[2] / "config/levelrl.toml")
+        # env = RLDroneHoverEnv(
         env = RLDroneRaceEnv(
             freq=config.env.freq,
             sim_config=config.sim,
@@ -24,6 +30,24 @@ def make_env(seed):
         return env
     return _init
 
+def get_latest_model_path(log_dir: str, lesson: int, idx: int = None) -> tuple[Path, int]:
+    log_path = Path(log_dir)
+    pattern = re.compile(rf"ppo_final_model_{lesson}_(\d+)\.zip")
+
+    model_files = [(f, int(m.group(1))) for f in log_path.glob(f"ppo_final_model_{lesson}_*.zip")
+                   if (m := pattern.match(f.name))]
+
+    if not model_files:
+        raise FileNotFoundError(f"No model found for lesson {lesson} in {log_path}")
+    
+    latest_file, max_idx = max(model_files, key=lambda x: x[1])
+
+    if idx is not None:
+        for f, n in model_files:
+            if n == idx:
+                return f, n
+        raise FileNotFoundError(f"Model ppo_final_model_{lesson}_{idx}.zip not found in {log_path}")
+    return latest_file, max_idx
 
 def test_models(model_paths, num_episodes=999, render=True):
     env_fns = [make_env(seed=0)]
@@ -42,17 +66,19 @@ def test_models(model_paths, num_episodes=999, render=True):
         done = False
         episode_reward = 0.0
         step = 0
-
+        vel_record = []
+        max_vel = 0.0
         while not done:
-            if keyboard.is_pressed('right'):
-                current_model_idx = (current_model_idx + 1) % len(models)
-                print(f"switch to model: {model_paths[current_model_idx].name}")
-                time.sleep(0.3)
+            if KEYBOARD:
+                if keyboard.is_pressed('right'):
+                    current_model_idx = (current_model_idx + 1) % len(models)
+                    print(f"switch to model: {model_paths[current_model_idx].name}")
+                    time.sleep(0.3)
 
-            elif keyboard.is_pressed('left'):
-                current_model_idx = (current_model_idx - 1) % len(models)
-                print(f"switch to model: {model_paths[current_model_idx].name}")
-                time.sleep(0.3)
+                elif keyboard.is_pressed('left'):
+                    current_model_idx = (current_model_idx - 1) % len(models)
+                    print(f"switch to model: {model_paths[current_model_idx].name}")
+                    time.sleep(0.3)
 
             elif keyboard.is_pressed('q'):
                 env.close()
@@ -63,25 +89,34 @@ def test_models(model_paths, num_episodes=999, render=True):
             obs, reward, done, info = env.step(action)
             episode_reward += reward
             step += 1
+            vel_record.append(np.linalg.norm(obs[0,3:6]))
 
             if render:
                 fps = 60
                 env.envs[0].render()
-                time.sleep(1/fps)
-
-        print(f"Episode {ep + 1}: reward={episode_reward}, steps={step}")
+        vel_record = np.array(vel_record)
+        print(
+            f"Episode {ep + 1}: reward={episode_reward}, steps={step},"
+            f"lap time={step/env.envs[0].freq}, max vel={np.max(vel_record):.2f}, avg vel={np.mean(vel_record):.2f}"
+        )
 
     env.close()
+    
 
 if __name__ == "__main__":
+    lesson = 3
+    latest_model_path, lesson_train_idx = get_latest_model_path(Path(__file__).parent / "log2", lesson, idx=0)
+    print(f"Testing Lesson {lesson}.{lesson_train_idx}")
     model_paths = [
-        Path(__file__).parent / "log/ppo_final_model",
+        latest_model_path,
+        # Path(__file__).parent / "log2/ppo_final_model",
+        # Path(__file__).parent / "log2/best_model",
+        # Path(__file__).parent / "log/ppo_final_model_finish_race",
         # Path(__file__).parent / "log/ppo_final_model_hover_last",
         # Path(__file__).parent / "log/ppo_final_model_gate_center",
-        Path(__file__).parent / "log/ppo_final_model_pass_first_gate",
+        # Path(__file__).parent / "log/ppo_final_model_wp_track",
         # Path(__file__).parent / "log/ppo_final_model_scare_of_gate",
-        Path(__file__).parent / "log/ppo_final_model_pass_then_climb",
-        Path(__file__).parent / "log/ppo_final_model_finish_race",
+        # Path(__file__).parent / "log/ppo_final_model_pass_then_climb",
     ]
     test_models(model_paths)
 

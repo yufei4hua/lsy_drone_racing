@@ -24,6 +24,40 @@ from lsy_drone_racing.tools.planners.occupancy_map import OccupancyMap3D
 from lsy_drone_racing.tools.ext_tools import PolynomialTool as poly
 from lsy_drone_racing.tools.race_objects import Gate
 
+class KinoAStarPlannerConfig:
+    w_time : np.floating
+    lambda_heu: np.floating
+
+    max_vel : np.floating
+    max_acc : np.floating
+    tie_breaker : np.floating
+    acc_resolution : np.floating
+    time_resolution : np.floating
+    max_duration: np.floating
+    safety_check_res: np.floating
+
+    def __init__(
+        self,
+        w_time : np.floating,
+        lambda_heu: np.floating,
+        max_vel : np.floating,
+        max_acc : np.floating,
+        tie_breaker : np.floating,
+        acc_resolution : np.floating,
+        time_resolution : np.floating,
+        max_duration: np.floating,
+        safety_check_res: np.floating,
+    ) -> None:
+        self.w_time = w_time 
+        self.lambda_heu= lambda_heu
+        self.max_vel = max_vel 
+        self.max_acc = max_acc 
+        self.tie_breaker = tie_breaker 
+        self.acc_resolution = acc_resolution 
+        self.time_resolution = time_resolution 
+        self.max_duration = max_duration
+        self.safety_check_res = safety_check_res
+
 class NodeInfo():
     g_cost : np.floating
     f_cost : np.floating
@@ -168,8 +202,7 @@ class KinoDynamicAStarPlanner():
                   time_resolution: np.floating,
                   max_duration: np.floating,
                   safety_check_res: np.floating,
-                  lambda_heu: np.floating,   
-
+                  lambda_heu: np.floating,  
     )->None:
         self._w_time = w_time
         self._max_vel = max_vel
@@ -182,7 +215,19 @@ class KinoDynamicAStarPlanner():
         self._lambda_heu = lambda_heu
         return
     
-    
+    def setup_param(self,
+                  params : KinoAStarPlannerConfig  
+    )->None:
+        self._w_time = params.w_time
+        self._max_vel = params.max_vel
+        self._max_acc = params.max_acc
+        self._tie_breaker = params.tie_breaker
+        self._acc_resolution = params.acc_resolution
+        self._time_resolution = params.time_resolution
+        self._max_duration = params.max_duration
+        self._safety_check_resolution = params.safety_check_res
+        self._lambda_heu = params.lambda_heu
+        return
     
 
     def search(self,
@@ -194,8 +239,9 @@ class KinoDynamicAStarPlanner():
     max_search_size : int = 500000,
     fig : figure.Figure = None,
     ax : axes.Axes = None,
-    close_enough : Callable[[NDArray[np.floating], NDArray[np.floating]], bool] = None
-    ):
+    close_enough : Callable[[NDArray[np.floating], NDArray[np.floating]], bool] = None,
+    soft_collision_constraint : bool = False
+    ) -> Tuple[bool, float]:
         self.print_message(f'Current posisition: {start_pt}')
         self.print_message(f'Current target posisition: {end_pt}')
         node_infos : List[List[List[NodeInfo]]] = []
@@ -290,7 +336,7 @@ class KinoDynamicAStarPlanner():
                 break
             if time.time() - start_time_stamp > time_out:
                 self.print_message(f'The planner has reached max planning time {time_out} sec.')
-                return False
+                return False, time.time() - start_time_stamp
             if len(open_set) > stop_expanding_threshold:
                 stop_expanding = True
                 self.print_message(f'The planner has reached the max open set size {stop_expanding_threshold}. Stop expanding')
@@ -320,15 +366,19 @@ class KinoDynamicAStarPlanner():
                         continue
 
                     no_collision = True
+                    collision_cost = 0.0
                     for t_sample in np.arange(tau * self._safety_check_resolution, tau + 1e-6, tau * self._safety_check_resolution):
                         check_pos, _ = self._state_transit(node.info.pos, node.info.vel, u, t_sample)
                         if not self._get_grid_occ(check_pos):
-                            no_collision = False
-                            break
+                            if not soft_collision_constraint:
+                                no_collision = False
+                                break
+                            else:
+                                collision_cost += 5000.0
                     if not no_collision:
                         continue
                     
-                    g_cost = node.g_cost + (np.dot(u, u) + self._w_time) * tau
+                    g_cost = node.g_cost + (np.dot(u, u) + self._w_time) * tau + collision_cost
                     f_cost, optimal_time = self._estimate_heuristic(new_pos, new_vel, end_pt, end_v)
                     f_cost += self._lambda_heu * f_cost
 
@@ -383,11 +433,11 @@ class KinoDynamicAStarPlanner():
             # self.print_message("# Expanded nodes in this loop:" + str(len(expanded_node_infos)))
             if count > max_search_size:
                 self.print_message(f'The planner has reached the max search size {max_search_size}.')
-                return False
+                return False, time.time() - start_time_stamp
             count += 1
         if end_node is None:
             self.print_message(f'The planner failed to find a path.')
-            return False
+            return False, time.time() - start_time_stamp
         
         # Backtrack the path
         self._path = []
@@ -396,7 +446,7 @@ class KinoDynamicAStarPlanner():
             self._path.append(current)
             current = current.parent
         self._path.reverse()
-        return True
+        return True, time.time() - start_time_stamp
 
 
 
@@ -576,6 +626,15 @@ class KinoDynamicAStarPlanner():
                         ) -> Tuple[NDArray[np.floating], NDArray[np.floating]]:
         return p_0 + 0.5 * tau * tau * um + v_0 * tau, v_0 + tau * um
     
+    def remove_plot(self) -> bool:
+        if hasattr(self,'_open_set_plot') and self._open_set_plot is not None:
+            try:
+                self._open_set_plot.remove()
+                self._open_set_plot = None
+                return True
+            except:
+                return False
+
     def plot_open_set(self, open_set: List[Tuple[float,float, SearchNode]],
                     fig : figure.Figure,
                       ax : axes.Axes,
