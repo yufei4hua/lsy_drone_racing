@@ -192,13 +192,32 @@ Train: lesson 2.14
     duration: 10min
     changes: r_center based on distance to gate norm line
     result: ok
-    comments: next stage
+    comments: next lesson
 
 Train: lesson 3.1 drone racing environment!
-    time: Jun 8 21:32
+    time: Jun 8 22:52
     n_envs: 20
-    steps: 400000
-    duration: 10min
-    changes: switch to drone racing
-    result: ok
-    comments: next stage
+    steps: 4 * 400000
+    duration: 30min
+    changes: switch to drone racing, fix obstacle distance compute error
+    result: moving very slow, start to climb after passing first gate like before
+    comments: must do random initialization, reset model
+
+Train: lesson 3.2 random initialization
+    time: Jun 9 01:10
+    n_envs: 20
+    steps: 2 * 400000
+    duration: 15min
+    changes: init drone at arbitrary position on racing course, reset to 3.0
+    result: idk, looks better
+    comments: I'll reset again and train it overnight
+
+Train: lesson 3.3 extra obstacles
+    time: Jun 9 01:45
+    n_envs: 20
+    steps: 24 * 400000
+    duration: 2.8h
+    changes: add extra pillars between the first and second gates, prevent it from developing weird trajectory
+    result: can't even pass the first gate
+    comments: I give up
+
