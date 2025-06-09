@@ -10,7 +10,7 @@ Note that the trajectory uses pre-defined waypoints instead of dynamically gener
 from __future__ import annotations  # Python 3.10 type hints
 
 from statistics import pvariance
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List
 
 import numpy as np
 import scipy
@@ -25,7 +25,8 @@ from sympy import true
 from traitlets import TraitError
 import os
 
-from lsy_drone_racing.control.fresssack_controller import FresssackController,MeshMarkerTx, PathTx, TFTx
+from lsy_drone_racing.control.fresssack_controller import FresssackController
+from lsy_drone_racing.control.fresssack_controller import MarkerArrayTx, CapsuleMarkerTx, MeshMarkerTx, PathTx, TFTx
 from lsy_drone_racing.control.easy_controller import EasyController
 from lsy_drone_racing.control import Controller
 from lsy_drone_racing.tools.ext_tools import TrajectoryTool
@@ -51,6 +52,8 @@ try:
     from geometry_msgs.msg import PoseStamped, TransformStamped
     from nav_msgs.msg import Path
     from tf2_ros import TransformBroadcaster
+    from visualization_msgs.msg import Marker, MarkerArray
+
     from transformations import quaternion_from_euler, euler_from_quaternion
     ROS_AVAILABLE = True
 except:
@@ -60,7 +63,9 @@ class MPCCPrescriptedController(EasyController):
     """Implementation of MPCC using the collective thrust and attitude interface."""
     mpcc_traj_tx : PathTx
     path_tx : PathTx
-    gate_tf_txs : TFTx
+    gate_tf_txs : List[TFTx]
+    gate_marker_array_tx : MarkerArrayTx
+    obstacle_marker_array_tx : MarkerArrayTx
 
     def __init__(self, obs: dict[str, NDArray[np.floating]], info: dict, config: dict, env=None):
         """Initialize the attitude controller.
@@ -133,11 +138,13 @@ class MPCCPrescriptedController(EasyController):
                 TFTx(node_name = 'gate_' + str(i) + '_TF_tx', topic_name = 'gate_' + str(i))
                 for i in range(len(self.gates))
             ]
+            
             self.obstacle_tf_txs = [
-                TFTx(node_name = 'obstacles_' + str(i) + '_TF_tx', topic_name = 'obstacles_' + str(i))
+                TFTx(node_name = 'obstacle_' + str(i) + '_TF_tx', topic_name = 'obstacle_' + str(i))
                 for i in range(len(self.obstacles))
             ]
             current_dir = os.path.dirname(os.path.abspath(__file__))
+
             gate_mesh_file = os.path.join(current_dir, '..', 'ros', 'rviz','meshes', 'gate.dae')
             gate_unobserved_mesh_file = os.path.join(current_dir, '..', 'ros', 'rviz','meshes', 'gate_not_sure.dae')
             gate_passed_mesh_file = os.path.join(current_dir, '..', 'ros', 'rviz','meshes', 'gate_passed.dae')
@@ -153,15 +160,36 @@ class MPCCPrescriptedController(EasyController):
                 )
                 for i in range(len(self.gates))
             ]
+
+            self.gate_marker_array_tx = MarkerArrayTx(
+                node_name = 'gate_marker_array_tx',
+                topic_name = 'gate_marker_array',
+                queue_size = 5
+            )
+            
             obstacle_mesh_file = os.path.join(current_dir, '..', 'ros', 'rviz','meshes', 'obstacle.dae')
             obstacle_unobserved_mesh_file = os.path.join(current_dir, '..', 'ros', 'rviz','meshes', 'obstacle_not_sure.dae')
             self.obstacle_marker_txs = [
                     MeshMarkerTx(
-                    node_name = 'obstacles_' + str(i) + '_marker_tx',
-                    topic_name = 'obstacles_' + str(i) + '_marker',
+                    node_name = 'obstacle_' + str(i) + '_marker_tx',
+                    topic_name = 'obstacle_' + str(i) + '_marker',
                     mesh_path = [os.path.abspath(obstacle_unobserved_mesh_file),
                                  os.path.abspath(obstacle_mesh_file)],
-                    frame_id = 'obstacles_' + str(i),
+                    frame_id = 'obstacle_' + str(i),
+                    queue_size = 1
+                )
+                for i in range(len(self.obstacles))
+            ]
+            self.obstacle_marker_array_tx = MarkerArrayTx(
+                node_name = 'obstacle_marker_array_tx',
+                topic_name = 'obstacle_marker_array',
+                queue_size = 5
+            )
+            self.obstacle_capsule_txs = [
+                CapsuleMarkerTx(
+                    node_name = 'obstacle_' + str(i) + '_capsule_tx',
+                    topic_name = 'obstacle_' + str(i) + '_capsule',
+                    frame_id = 'map',
                     queue_size = 1
                 )
                 for i in range(len(self.obstacles))
@@ -573,38 +601,7 @@ class MPCCPrescriptedController(EasyController):
                 }
             )
         if self.need_ros_tx(slow=True):
-            for idx, tx in enumerate(self.gate_marker_txs):
-                if self.next_gate > idx:
-                    tx.publish(
-                        {
-                            'idx' : 2
-                        }
-                    )
-                elif self.gates_visited[idx]:
-                    tx.publish(
-                        {
-                            'idx' : 1
-                        }
-                    )
-                else:
-                    tx.publish(
-                        {
-                            'idx' : 0
-                        }
-                    )
-            for idx, tx in enumerate(self.obstacle_marker_txs):
-                if self.obstacles_visited[idx]:
-                    tx.publish(
-                        {
-                            'idx' : 1
-                        }
-                        )
-                else:
-                    tx.publish(
-                        {
-                            'idx' : 0
-                        }
-                        )
+            pass
 
         try:
 
@@ -655,7 +652,86 @@ class MPCCPrescriptedController(EasyController):
                     }
                 )
         if self.need_ros_tx(slow = True): 
-            pass
+            gate_marker_list : List[Marker] = []
+            for idx, tx in enumerate(self.gate_marker_txs):
+                # if self.next_gate > idx:
+                #     tx.publish(
+                #         {
+                #             'idx' : 2
+                #         }
+                #     )
+                # elif self.gates_visited[idx]:
+                #     tx.publish(
+                #         {
+                #             'idx' : 1
+                #         }
+                #     )
+                # else:
+                #     tx.publish(
+                #         {
+                #             'idx' : 0
+                #         }
+                #     )
+                marker : Marker = None
+                if self.next_gate > idx:
+                    marker = tx.process_data(
+                        {
+                            'idx' : 2
+                        }
+                    )
+                elif self.gates_visited[idx]:
+                    marker = tx.process_data(
+                        {
+                            'idx' : 1
+                        }
+                    )
+                else:
+                    marker = tx.process_data(
+                        {
+                            'idx' : 0
+                        }
+                    )
+                gate_marker_list.append(marker)
+            self.gate_marker_array_tx.publish(
+                {
+                    'markers' : gate_marker_list
+                }
+            )
+
+            obstacle_marker_list = []
+            for idx, tx in enumerate(self.obstacle_marker_txs):
+                # if self.obstacles_visited[idx]:
+                #     tx.publish(
+                #         {
+                #             'idx' : 1
+                #         }
+                #         )
+                # else:
+                #     tx.publish(
+                #         {
+                #             'idx' : 0
+                #         }
+                #         )
+                marker : Marker = None
+                if self.obstacles_visited[idx]:
+                    marker = tx.process_data(
+                        {
+                            'idx' : 1
+                        }
+                        )
+                else:
+                    marker = tx.process_data(
+                        {
+                            'idx' : 0
+                        }
+                        )
+                obstacle_marker_list.append(marker)
+            self.obstacle_marker_array_tx.publish(
+                {
+                    'markers' : obstacle_marker_list
+                }
+            )
+            
             
         
 
