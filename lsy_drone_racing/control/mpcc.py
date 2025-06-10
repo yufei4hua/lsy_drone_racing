@@ -63,18 +63,18 @@ class MPCC(EasyController):
                          thickness = [0.2, 0.2, 0.2, 0.05],
                          vel_limit = [1.0, 1.0, 0.2, 1.0])
 
-        # # # # pre-planned trajectory
-        # # t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/param_a_5_sec_offsets.csv")     
-        # # trajectory = CubicSpline(t, pos)
-        # easy controller trajectory
-        gates_rotates = R.from_quat(obs['gates_quat'])
-        rot_matrices = np.array(gates_rotates.as_matrix())
-        self.gates_norm = np.array(rot_matrices[:,:,1])
-        self.gates_pos = obs['gates_pos']
-        # replan trajectory
-        waypoints = self.calc_waypoints(self.init_pos, self.gates_pos, self.gates_norm)
-        t, waypoints = self.avoid_collision(waypoints, obs['obstacles_pos'], 0.3)
-        trajectory = self.trajectory_generate(self.t_total, waypoints)
+        # # pre-planned trajectory
+        t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/param_a_5_sec_offsets.csv")     
+        trajectory = CubicSpline(t, pos)
+        # # easy controller trajectory
+        # gates_rotates = R.from_quat(obs['gates_quat'])
+        # rot_matrices = np.array(gates_rotates.as_matrix())
+        # self.gates_norm = np.array(rot_matrices[:,:,1])
+        # self.gates_pos = obs['gates_pos']
+        # # replan trajectory
+        # waypoints = self.calc_waypoints(self.init_pos, self.gates_pos, self.gates_norm)
+        # t, waypoints = self.avoid_collision(waypoints, obs['obstacles_pos'], 0.3)
+        # trajectory = self.trajectory_generate(self.t_total, waypoints)
 
         # t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/param_c_6_sec_bigger_pillar.csv")
         # trajectory = CubicSpline(t, pos)

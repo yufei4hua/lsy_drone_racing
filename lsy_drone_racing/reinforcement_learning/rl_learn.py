@@ -16,9 +16,9 @@ from lsy_drone_racing.reinforcement_learning.rl_drone_race import RLDroneRaceEnv
 
 def make_env(seed):
     def _init():
-        config = load_config(Path(__file__).parents[2] / "config/levelrl.toml")
-        # env = RLDroneHoverEnv( # single gate env
-        env = RLDroneRaceEnv( # racing env
+        config = load_config(Path(__file__).parents[2] / "config/levelrl_single_gate.toml")
+        env = RLDroneHoverEnv( # single gate env
+        # env = RLDroneRaceEnv( # racing env
             freq=config.env.freq,
             sim_config=config.sim,
             track=config.env.track,
@@ -57,7 +57,7 @@ def main():
     vec_env = SubprocVecEnv(env_fns)
 
     # === 2. 设置训练保存目录和回调 ===
-    log_dir = Path(__file__).parent / "log2"
+    log_dir = Path(__file__).parent / "log3"
     os.makedirs(log_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -84,16 +84,15 @@ def main():
     #     device="cpu",
     # )
     # 加载模型
-    lesson = 3
-    model_idx = 0 # default None, use if need reset to earlier model
-    latest_model_path, lesson_train_idx = get_latest_model_path(Path(__file__).parent / "log2", lesson, idx=model_idx)
+    lesson = 1
+    model_idx = None # default None, use if need reset to earlier model
+    latest_model_path, lesson_train_idx = get_latest_model_path(log_dir, lesson, idx=model_idx)
     print(f"Learning Lesson {lesson}.{lesson_train_idx}")
     model = PPO.load(latest_model_path, env=vec_env, device="cpu")
-    # model = PPO.load(Path(__file__).parent / "log2/ppo_final_model_1_9", env=vec_env, device="cpu")
 
     # === 4. 启动训练 ===
     if num_envs > 1:
-        model.learn(total_timesteps=24*400000, callback=[checkpoint_callback, eval_callback])
+        model.learn(total_timesteps=2*400000, callback=[checkpoint_callback, eval_callback])
     else: # for visualization
         render_callback = RenderCallback(render_freq=1)
         model.learn(total_timesteps=10000, callback=[render_callback])

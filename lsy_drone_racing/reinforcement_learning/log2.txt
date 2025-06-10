@@ -221,3 +221,7 @@ Train: lesson 3.3 extra obstacles
     result: can't even pass the first gate
     comments: I give up
 
+Thinking: 
+    the main problem this time is that I end the episode upon crossing a gate. So it learnt to pass at extremely high speed, and thus not stable.
+    I should start from hovering instead of just flying into gates.
+    And I'll try imitation learning as well.

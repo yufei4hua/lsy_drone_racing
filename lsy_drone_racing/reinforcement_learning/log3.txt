@@ -1,0 +1,12 @@
+TODO:
+    Start from hovering at gate center. Set episode length to 500, let it hover till the end.
+    Also do imitation learning, use vanilla MPCC as teacher policy, run simultaneously and compare output.
+
+Train: lesson 1.0 Hover at gate
+    time: Jun 10 04:12
+    n_envs: 20
+    steps: 2 * 400000
+    duration: 20min
+    changes: hover
+    result: 
+    comments: 
