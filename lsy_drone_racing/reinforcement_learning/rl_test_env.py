@@ -15,9 +15,10 @@ from lsy_drone_racing.reinforcement_learning.rl_drone_race import RLDroneRaceEnv
 
 def make_env(seed):
     def _init():
-        config = load_config(Path(__file__).parents[2] / "config/levelrl_single_gate.toml")
-        env = RLDroneHoverEnv(
-        # env = RLDroneRaceEnv(
+        # config = load_config(Path(__file__).parents[2] / "config/levelrl_single_gate.toml")
+        # env = RLDroneHoverEnv(
+        config = load_config(Path(__file__).parents[2] / "config/levelrl.toml")
+        env = RLDroneRaceEnv(
             freq=config.env.freq,
             sim_config=config.sim,
             track=config.env.track,
@@ -80,9 +81,9 @@ def test_models(model_paths, num_episodes=999, render=True):
                     print(f"switch to model: {model_paths[current_model_idx].name}")
                     time.sleep(0.3)
 
-            elif keyboard.is_pressed('q'):
-                env.close()
-                return
+                elif keyboard.is_pressed('q'):
+                    env.close()
+                    return
 
             model = models[current_model_idx]
             action, _states = model.predict(obs, deterministic=True)
@@ -104,7 +105,7 @@ def test_models(model_paths, num_episodes=999, render=True):
     
 
 if __name__ == "__main__":
-    lesson = 1
+    lesson = 3
     latest_model_path, lesson_train_idx = get_latest_model_path(Path(__file__).parent / "log3", lesson, idx=None)
     print(f"Testing Lesson {lesson}.{lesson_train_idx}")
     model_paths = [

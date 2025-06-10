@@ -1,12 +1,56 @@
 TODO:
     Start from hovering at gate center. Set episode length to 500, let it hover till the end.
-    Also do imitation learning, use vanilla MPCC as teacher policy, run simultaneously and compare output.
+    Also do imitation learning, use PID (for robustness) with attitude output as teacher policy, run simultaneously and compare output.
 
 Train: lesson 1.0 Hover at gate
-    time: Jun 10 04:12
+    time: Jun 10 06:07
     n_envs: 20
     steps: 2 * 400000
     duration: 20min
     changes: hover
-    result: 
+    result: flying to gate but unstable
+    comments: param works, keep training
+
+Train: lesson 1.1
+    time: Jun 10 07:21
+    n_envs: 20
+    steps: 6 * 400000
+    duration: 38min
+    changes: 
+    result: fly and hover half meter in front of the gate, will do 
+    comments: move to next lesson
+
+Train: lesson 2.1 with obstacles
+    time: Jun 10 07:21
+    n_envs: 20
+    steps: 4 * 400000
+    duration: 27min
+    changes: 
+    result: avoid obstacles sometimes, still not going into the gate
+    comments: increase k_gate
+
+Train: lesson 2.2
+    time: Jun 10 12:02
+    n_envs: 20
+    steps: 2 * 400000
+    duration: 18min
+    changes: +k_gate -k_gate_pos -k_obst -k_obst_d ++k_success
+    result: afraid of going through the gate
+    comments: decrease r, increase k_gate
+
+Train: lesson 2.3
+    time: Jun 10 12:37
+    n_envs: 20
+    steps: 2 * 400000
+    duration: 18min
+    changes: +k_gate -r
+    result: still afraid, but better collision avoidance
+    comments: try next lesson in racing environment
+
+Train: lesson 3.0 Racing environment with imitation learning
+    n_envs: 20
+    steps: 6 * 400000
+    duration: 38min
+    changes: +k_gate -r
+    result: still stop in front of the gates?? why?
     comments: 

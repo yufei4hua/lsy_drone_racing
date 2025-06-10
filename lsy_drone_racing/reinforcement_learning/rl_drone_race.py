@@ -30,13 +30,13 @@ AutoresetMode = None
 if Version(gymnasium.__version__) >= Version("1.1"):
     from gymnasium.vector import AutoresetMode
 
-IMMITATION_LEARNING = False
+IMMITATION_LEARNING = True
 if IMMITATION_LEARNING:
     from pathlib import Path
     from lsy_drone_racing.utils import load_config
-    # from lsy_drone_racing.control.attitude_controller import AttitudeController
+    from lsy_drone_racing.control.attitude_pre_scripted import AttitudeController
     # from lsy_drone_racing.control.easy_controller import EasyController
-    from lsy_drone_racing.control.mpcc import MPCC
+    # from lsy_drone_racing.control.mpcc import MPCC
 
 class RLDroneRaceEnv(RaceCoreEnv, Env):
     def __init__(
@@ -77,7 +77,7 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         self.prev_gate_pos = None
         self.prev_obst_pos = None
         self.prev_drone_pos = None
-        self.prev_act = self.act_bias
+        self.prev_act = np.zeros(4)
         self.num_gates = 4
         self.gates_size = [0.4, 0.4] # [width, height]
         self._tick = 0
@@ -99,9 +99,8 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         self.obs_rl = None
 
     def step(self, action):
-        if IMMITATION_LEARNING: # test
-            action = self.teacher_controller.compute_control(self.obs_env, None) - self.act_bias
-            self.teacher_controller._tick += 1
+        # if IMMITATION_LEARNING: # test
+        #     action = self.teacher_controller.compute_control(self.obs_env, None) - self.act_bias
         self._tick += 1
         action_exec = action + self.act_bias
         self.obs_env, _, terminated, truncated, info = self._step(action_exec)
@@ -122,8 +121,7 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         ang_vel = obs["ang_vel"].squeeze()
 
         # calc vectors pointing to four gate corners
-        curr_gate = 0 # for hover tast training
-        # curr_gate = obs['target_gate']
+        curr_gate = obs['target_gate']
         self.gates_size = [0.4, 0.4] # [width, height]
         self.gate_rot_mat = np.array(R.from_quat(obs['gates_quat'][curr_gate]).as_matrix())
         half_w, half_h = self.gates_size[0] / 2, self.gates_size[1] / 2
@@ -160,7 +158,6 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         # ang_vel to rpy_rates
         rpy_rates = ang_vel2rpy_rates(ang_vel, quat)
         
-        self.rel_xy_obst_gaus = np.zeros(2) # for hover tast training
         state = np.concatenate([pos, vel, rot_mat, rpy_rates, self.rel_pos_gate.reshape(-1), self.rel_xy_obst_gaus, action])
         # state = np.concatenate([pos, vel, rot_mat, rpy_rates, self.rel_pos_gate.reshape(-1), action]) # old version
         return state
@@ -171,7 +168,7 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         self.prev_gate_pos = self.obs_env['gates_pos'][0]
         self.prev_obst_xy = self.obs_env['obstacles_pos'][0][:2]
         self.prev_drone_pos = self.obs_env['pos']
-        self.prev_act = self.act_bias
+        self.prev_act = np.zeros(4)
         self.traj_record = np.array([self.obs_env['pos']])
 
     def _reset(self, seed=None, options=None, mask=None):
@@ -183,12 +180,12 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
 
         # manually recorded init points
         self.rand_init_list = [
-            {'pos': jp.array([0.9081, 1.1422, 0.2201]), 'vel': jp.array([-0.4634, -1.6049, 0.4515]), 'quat': jp.array([0.1611, -0.0436, 0.0031, 0.9860]), 'f_thrust': 0.3179, 'target_gate': 0},
-            {'pos': jp.array([0.7550, 0.6635, 0.3080]), 'vel': jp.array([-0.5818, -2.1048, 0.3162]), 'quat': jp.array([0.0452, 0.0307, -0.0066, 0.9985]), 'f_thrust': 0.2883, 'target_gate': 0},
+            {'pos': jp.array([0.9081, 1.1422, 0.2201]), 'vel': jp.array([-0.2142, -0.7419, 0.2087]), 'quat': jp.array([0.1611, -0.0436, 0.0031, 0.9860]), 'f_thrust': 0.3179, 'target_gate': 0},
+            {'pos': jp.array([0.7550, 0.6635, 0.3080]), 'vel': jp.array([-0.2109, -0.7631, 0.1146]), 'quat': jp.array([0.0452, 0.0307, -0.0066, 0.9985]), 'f_thrust': 0.2883, 'target_gate': 0},
             {'pos': jp.array([0.2309, -1.1061, 1.0188]), 'vel': jp.array([0.1798, -0.5673, 0.4537]), 'quat': jp.array([-0.0357, 0.0800, 0.0031, 0.9965]), 'f_thrust': 0.2255, 'target_gate': 1},
             {'pos': jp.array([0.5624, -1.2678, 1.1197]), 'vel': jp.array([1.0049, 0.1084, 0.1169]), 'quat': jp.array([-0.0709, 0.0366, -0.0009, 0.9968]), 'f_thrust': 0.2705, 'target_gate': 1},
             {'pos': jp.array([1.1311, -0.8747, 1.1062]), 'vel': jp.array([0.0588, 1.0162, -0.1100]), 'quat': jp.array([-0.0605, -0.1642, -0.0146, 0.9845]), 'f_thrust': 0.2624, 'target_gate': 2},
-            {'pos': jp.array([0.6138, -0.0001, 0.8368]), 'vel': jp.array([-1.4030, 1.8265, -0.8778]), 'quat': jp.array([-0.0417, -0.0282, 0.0048, 0.9987]), 'f_thrust': 0.2299, 'target_gate': 2},
+            {'pos': jp.array([0.6138, -0.0001, 0.8368]), 'vel': jp.array([-0.5123, 0.6669, -0.3205]), 'quat': jp.array([-0.0417, -0.0282, 0.0048, 0.9987]), 'f_thrust': 0.2299, 'target_gate': 2},
             {'pos': jp.array([0.0045, 0.9539, 0.4696]), 'vel': jp.array([-0.1742, 0.8196, -0.0696]), 'quat': jp.array([0.1123, 0.0797, -0.0008, 0.9905]), 'f_thrust': 0.2878, 'target_gate': 2},
             {'pos': jp.array([-0.0996, 0.9104, 0.5883]), 'vel': jp.array([-0.3977, -0.8926, 0.0738]), 'quat': jp.array([0.0938, -0.0228, -0.0006, 0.9953]), 'f_thrust': 0.2662, 'target_gate': 3},
             {'pos': jp.array([-0.2380, 0.5384, 0.7121]), 'vel': jp.array([-0.3728, -1.1330, 0.7930]), 'quat': jp.array([-0.0511, -0.0051, -0.0002, 0.9987]), 'f_thrust': 0.3220, 'target_gate': 3},
@@ -207,7 +204,9 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         self.sim.data = self.sim.data.replace(
             states=self.sim.data.states.replace(pos=pos, vel=vel, quat=quat)
         )
+
         self.data = self._reset_env_data(self.data, self.sim.data.states.pos, mask)
+        
         self.data = self.data.replace(
             target_gate=self.data.target_gate.at[...].set(target_gate)
         )
@@ -216,16 +215,17 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
 
     def reset(self, seed=None, options=None):
         # parameters setting # 放到这儿好调参
-        self.k_obst = 0.4
+        self.k_obst = 0.2
         self.k_obst_d = 0.5
-        self.k_gates = 1.0
+        self.k_gates = 1.5
         self.k_center = 0.3
-        self.k_vel = -0.4
+        self.k_vel = +0.1
         self.k_act = 0.01
         self.k_act_d = 0.001
         self.k_yaw = 0.1
         self.k_crash = 20
         self.k_success = 30
+        self.k_imit = 0.2
         # TODO: random reset at different racing process
         self.obs_env, info = self._reset(seed=seed, options=options)
         self.obs_env = {k: np.array(v[0, 0]) for k, v in self.obs_env.items()}
@@ -235,7 +235,7 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         self.obs_rl = self._obs_to_state(self.obs_env, self.act_bias)
         if IMMITATION_LEARNING:
             config = load_config(Path(__file__).parents[2] / "config/level0.toml")
-            self.teacher_controller = MPCC(self.obs_env, info, config)
+            self.teacher_controller = AttitudeController(self.obs_env, info, config, self)
         return self.obs_rl, info
     
     def _reward(self, obs, obs_rl, act):
@@ -247,17 +247,17 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         obst_xy = self.rel_xy_obst + drone_pos[:2]
         rel_xy_obst = obs_rl[-6:-4] # gaussian length
         rel_gate = gate_pos - drone_pos
-        r = 0.4
+        r = 0.8
         if curr_gate != self.prev_gate: # handle gate switching
             self.prev_gate_pos = gate_pos
             r += self.k_success
         r_obst = -self.k_obst * np.linalg.norm(rel_xy_obst)
         r_obst_d = -self.k_obst_d * (np.linalg.norm(rel_xy_obst)) * (np.linalg.norm(self.prev_obst_xy - self.prev_drone_pos[:2]) - np.linalg.norm(obst_xy - drone_pos[:2]))
         r_gates = self.k_gates * (np.linalg.norm(self.prev_gate_pos - self.prev_drone_pos) - np.linalg.norm(rel_gate))
-        r_center = -self.k_center * (1 - np.abs(np.dot(rel_gate, gates_norm))/np.linalg.norm(rel_gate))
+        # r_center = -self.k_center * (1 - np.abs(np.dot(rel_gate, gates_norm))/np.linalg.norm(rel_gate))
         r_center = -self.k_center * np.linalg.norm(rel_gate - gates_norm*np.dot(rel_gate, gates_norm))/np.linalg.norm(rel_gate) # err dist to center line
         r_act = -self.k_act * np.linalg.norm(act) - self.k_act_d * np.linalg.norm(act - self.prev_act)
-        r_vel = self.k_vel * (1+np.linalg.norm(rel_xy_obst)-r_obst_d) * np.linalg.norm(drone_vel)
+        r_vel = self.k_vel * (1-np.linalg.norm(rel_xy_obst)) * np.linalg.norm(drone_vel)
         r_yaw = -self.k_yaw * np.fabs(R.from_quat(obs['quat']).as_euler('zyx', degrees=False)[0])
 
         # print(
@@ -276,11 +276,10 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         if IMMITATION_LEARNING:
             k_imit_p, k_imit_d = 0.3, 1.0
             # action diff from teacher action
-            # self.teacher_controller.set_tick(ref_tick)
-            self.teacher_controller.compute_control(obs, None) # only to update trajectory
             demo_action = self.teacher_controller.compute_control(obs, None) - self.act_bias
             r_imit = -self.k_imit * np.linalg.norm(demo_action - act)
             r += r_imit
+            # print(r_imit)
 
         return r
     
@@ -388,8 +387,8 @@ class RLDroneHoverEnv(RLDroneRaceEnv):
         new_mocap_pos = self.sim.data.mjx_data.mocap_pos.at[:, self.gates["mj_ids"][0]].set(jp.array(gate_pos))
         new_mocap_quat = self.sim.data.mjx_data.mocap_quat.at[:, self.gates["mj_ids"][0]].set(jp.array([gate_quat[3], gate_quat[0], gate_quat[1], gate_quat[2]]))  # to MuJoCo order
 
-        # obstacle_pos = self.rand_fake_obstacles(init_pos, gate_pos, ang_range=0.3, safe_dis=0.7)
-        # new_mocap_pos = new_mocap_pos.at[:, self.obstacles["mj_ids"][0]].set(jp.array(obstacle_pos))
+        obstacle_pos = self.rand_fake_obstacles(init_pos, gate_pos, ang_range=0.3, safe_dis=0.7)
+        new_mocap_pos = new_mocap_pos.at[:, self.obstacles["mj_ids"][0]].set(jp.array(obstacle_pos))
 
         self.sim.data = self.sim.data.replace(
             mjx_data=self.sim.data.mjx_data.replace(
@@ -403,17 +402,17 @@ class RLDroneHoverEnv(RLDroneRaceEnv):
     
     def reset(self, seed=None, options=None, init_pos:NDArray=None):
         # parameters setting # 放到这儿好调参
-        self.k_obst = 0
-        self.k_obst_d = 0
-        self.k_gates_pos = 0.5
-        self.k_gates = 1.0
+        self.k_obst = 0.2
+        self.k_obst_d = 0.2
+        self.k_gates_pos = 0.3
+        self.k_gates = 1.8
         self.k_center = 0.6
         self.k_vel = -0.3
         self.k_act = 0.002
         self.k_act_d = 0.0001
         self.k_yaw = 0.1
-        self.k_crash = 15
-        self.k_success = 25
+        self.k_crash = 30
+        self.k_success = 25 
         # TODO: random reset position
         init_pos = np.array([0.0, 0.0, 1.5])
         self.obs_env, info = self._reset(seed=seed, options=options, init_pos=init_pos)
@@ -434,13 +433,13 @@ class RLDroneHoverEnv(RLDroneRaceEnv):
         obst_xy = self.rel_xy_obst + drone_pos[:2]
         rel_xy_obst = obs_rl[-6:-4] # gaussian length
         rel_gate = gate_pos - drone_pos
-        r = 0.5
-        # if curr_gate != self.prev_gate:
-        #     self.prev_gate_pos = gate_pos
-        #     r += self.k_success
+        r = 0.6
+        if curr_gate != self.prev_gate:
+            self.prev_gate_pos = gate_pos
+            r += self.k_success
         r_obst = -self.k_obst * np.linalg.norm(rel_xy_obst)
         r_obst_d = -self.k_obst_d * (np.linalg.norm(rel_xy_obst)) * (np.linalg.norm(self.prev_obst_xy - self.prev_drone_pos[:2]) - np.linalg.norm(obst_xy - drone_pos[:2]))
-        r_gates = (self.k_gates * (np.linalg.norm(self.prev_gate_pos - self.prev_drone_pos) - np.linalg.norm(rel_gate)) - self.k_gates_pos) * np.linalg.norm(rel_gate)
+        r_gates = self.k_gates * (np.linalg.norm(self.prev_gate_pos - self.prev_drone_pos) - np.linalg.norm(rel_gate)) - self.k_gates_pos * np.linalg.norm(rel_gate)
         r_center = -self.k_center * (1 - np.abs(np.dot(rel_gate, gates_norm))/np.linalg.norm(rel_gate))
         r_center = -self.k_center * np.linalg.norm(rel_gate - gates_norm*np.dot(rel_gate, gates_norm))/np.linalg.norm(rel_gate) # err dist to center line
         r_act = -self.k_act * np.linalg.norm(act) - self.k_act_d * np.linalg.norm(act - self.prev_act)

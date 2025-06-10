@@ -16,9 +16,10 @@ from lsy_drone_racing.reinforcement_learning.rl_drone_race import RLDroneRaceEnv
 
 def make_env(seed):
     def _init():
-        config = load_config(Path(__file__).parents[2] / "config/levelrl_single_gate.toml")
-        env = RLDroneHoverEnv( # single gate env
-        # env = RLDroneRaceEnv( # racing env
+        # config = load_config(Path(__file__).parents[2] / "config/levelrl_single_gate.toml")
+        # env = RLDroneHoverEnv(
+        config = load_config(Path(__file__).parents[2] / "config/levelrl.toml")
+        env = RLDroneRaceEnv(
             freq=config.env.freq,
             sim_config=config.sim,
             track=config.env.track,
@@ -84,15 +85,15 @@ def main():
     #     device="cpu",
     # )
     # 加载模型
-    lesson = 1
-    model_idx = None # default None, use if need reset to earlier model
-    latest_model_path, lesson_train_idx = get_latest_model_path(log_dir, lesson, idx=model_idx)
-    print(f"Learning Lesson {lesson}.{lesson_train_idx}")
+    lesson = 3
+    lesson_train_idx = None # default None, use if need reset to earlier model
+    latest_model_path, lesson_train_idx = get_latest_model_path(log_dir, lesson, idx=lesson_train_idx)
     model = PPO.load(latest_model_path, env=vec_env, device="cpu")
+    print(f"Learning Lesson {lesson}.{lesson_train_idx}")
 
     # === 4. 启动训练 ===
     if num_envs > 1:
-        model.learn(total_timesteps=2*400000, callback=[checkpoint_callback, eval_callback])
+        model.learn(total_timesteps=6*400000, callback=[checkpoint_callback, eval_callback])
     else: # for visualization
         render_callback = RenderCallback(render_freq=1)
         model.learn(total_timesteps=10000, callback=[render_callback])

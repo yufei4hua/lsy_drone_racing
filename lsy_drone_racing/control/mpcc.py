@@ -415,46 +415,46 @@ class MPCC(EasyController):
             self.acados_ocp_solver.set(i, "u", self.u_guess[i])
         self.acados_ocp_solver.set(self.N, "x", self.x_guess[self.N])
         
-        ## replan trajectory:
-        if self.pos_change_detect(obs):
-            gates_rotates = R.from_quat(obs['gates_quat'])
-            rot_matrices = np.array(gates_rotates.as_matrix())
-            self.gates_norm = np.array(rot_matrices[:,:,1])
-            self.gates_pos = obs['gates_pos']
-            # replan trajectory
-            waypoints = self.calc_waypoints(self.init_pos, self.gates_pos, self.gates_norm)
-            t, waypoints = self.avoid_collision(waypoints, obs['obstacles_pos'], 0.3)
-            t, waypoints = self.add_drone_to_waypoints(waypoints, obs['pos'], 0.3, curr_theta=self.last_theta+1)
-            trajectory = self.trajectory_generate(self.t_total, waypoints)
-            trajectory = self.traj_tool.extend_trajectory(trajectory)
-            self.arc_trajectory = self.traj_tool.arclength_reparameterize(trajectory, epsilon=1e-3)
-            # write trajectory as parameter to solver
-            p_vals = self.get_updated_traj_param(self.arc_trajectory)
-            # xcurrent[-2], _ = self.traj_tool.find_nearest_waypoint(self.arc_trajectory, obs["pos"]) # correct theta
-            for i in range(self.N): # write current trajectory to solver
-                self.acados_ocp_solver.set(i, "p", p_vals)
-            # EXP: I do an extra solve here, with v_theta fixed, to provide a feasible solution
-                fixed_vel = self.u_guess[i][-1]
-                self.acados_ocp_solver.set(i, "lbu", np.array([-10.0, -10.0, -10.0, -10.0, fixed_vel-0.00]))
-                self.acados_ocp_solver.set(i, "ubu", np.array([10.0, 10.0, 10.0, 10.0, fixed_vel+0.00]))
-            # set initial state
-            self.acados_ocp_solver.set(0, "lbx", xcurrent)
-            self.acados_ocp_solver.set(0, "ubx", xcurrent)
-            # solve with v_theta frozen
-            self.acados_ocp_solver.solve()
-            # Restore constraints
-            for i in range(self.N):
-                self.acados_ocp_solver.set(i, "lbu", np.array([-10.0, -10.0, -10.0, -10.0, 0.0]))
-                self.acados_ocp_solver.set(i, "ubu", np.array([10.0, 10.0, 10.0, 10.0, 3.0]))
-            # Update warm start with solution just solved
-            self.x_guess = [self.acados_ocp_solver.get(i, "x") for i in range(self.N + 1)]
-            self.u_guess = [self.acados_ocp_solver.get(i, "u") for i in range(self.N)]
-            # Write new warm start
-            for i in range(self.N):
-                self.acados_ocp_solver.set(i, "x", self.x_guess[i])
-                self.acados_ocp_solver.set(i, "u", self.u_guess[i])
-            self.acados_ocp_solver.set(self.N, "x", self.x_guess[self.N])
-            self.x_warmup_traj = np.array([x[:3] for x in self.x_guess]) # for visualization
+        # ## replan trajectory:
+        # if self.pos_change_detect(obs):
+        #     gates_rotates = R.from_quat(obs['gates_quat'])
+        #     rot_matrices = np.array(gates_rotates.as_matrix())
+        #     self.gates_norm = np.array(rot_matrices[:,:,1])
+        #     self.gates_pos = obs['gates_pos']
+        #     # replan trajectory
+        #     waypoints = self.calc_waypoints(self.init_pos, self.gates_pos, self.gates_norm)
+        #     t, waypoints = self.avoid_collision(waypoints, obs['obstacles_pos'], 0.3)
+        #     t, waypoints = self.add_drone_to_waypoints(waypoints, obs['pos'], 0.3, curr_theta=self.last_theta+1)
+        #     trajectory = self.trajectory_generate(self.t_total, waypoints)
+        #     trajectory = self.traj_tool.extend_trajectory(trajectory)
+        #     self.arc_trajectory = self.traj_tool.arclength_reparameterize(trajectory, epsilon=1e-3)
+        #     # write trajectory as parameter to solver
+        #     p_vals = self.get_updated_traj_param(self.arc_trajectory)
+        #     # xcurrent[-2], _ = self.traj_tool.find_nearest_waypoint(self.arc_trajectory, obs["pos"]) # correct theta
+        #     for i in range(self.N): # write current trajectory to solver
+        #         self.acados_ocp_solver.set(i, "p", p_vals)
+        #     # EXP: I do an extra solve here, with v_theta fixed, to provide a feasible solution
+        #         fixed_vel = self.u_guess[i][-1]
+        #         self.acados_ocp_solver.set(i, "lbu", np.array([-10.0, -10.0, -10.0, -10.0, fixed_vel-0.00]))
+        #         self.acados_ocp_solver.set(i, "ubu", np.array([10.0, 10.0, 10.0, 10.0, fixed_vel+0.00]))
+        #     # set initial state
+        #     self.acados_ocp_solver.set(0, "lbx", xcurrent)
+        #     self.acados_ocp_solver.set(0, "ubx", xcurrent)
+        #     # solve with v_theta frozen
+        #     self.acados_ocp_solver.solve()
+        #     # Restore constraints
+        #     for i in range(self.N):
+        #         self.acados_ocp_solver.set(i, "lbu", np.array([-10.0, -10.0, -10.0, -10.0, 0.0]))
+        #         self.acados_ocp_solver.set(i, "ubu", np.array([10.0, 10.0, 10.0, 10.0, 3.0]))
+        #     # Update warm start with solution just solved
+        #     self.x_guess = [self.acados_ocp_solver.get(i, "x") for i in range(self.N + 1)]
+        #     self.u_guess = [self.acados_ocp_solver.get(i, "u") for i in range(self.N)]
+        #     # Write new warm start
+        #     for i in range(self.N):
+        #         self.acados_ocp_solver.set(i, "x", self.x_guess[i])
+        #         self.acados_ocp_solver.set(i, "u", self.u_guess[i])
+        #     self.acados_ocp_solver.set(self.N, "x", self.x_guess[self.N])
+        #     self.x_warmup_traj = np.array([x[:3] for x in self.x_guess]) # for visualization
 
 
         # set initial state
@@ -506,8 +506,8 @@ class MPCC(EasyController):
         info: dict,
     ) -> bool:
         """Increment the tick counter."""
-        self.step_update(obs = obs)
-        self.update_next_gate()
+        # self.step_update(obs = obs)
+        # self.update_next_gate()
 
         return self.finished
 
