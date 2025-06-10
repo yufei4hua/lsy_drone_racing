@@ -16,7 +16,21 @@ class TransformTool:
             return np.array(rot_matrices[:,axis])
         else:
             return None
+    def vector_to_quaternion_z_to_v(v: np.ndarray) -> NDArray[np.floating]:
+        v = v / np.linalg.norm(v)
+        z = np.array([0.0, 0.0, 1.0])
 
+        if np.allclose(v, z):
+            quat = [0, 0, 0, 1]  # identity rotation
+        elif np.allclose(v, -z):
+            quat = R.from_rotvec(np.pi * np.array([1, 0, 0])).as_quat()
+        else:
+            rot_axis = np.cross(z, v)
+            rot_axis /= np.linalg.norm(rot_axis)
+            angle = np.arccos(np.clip(np.dot(z, v), -1.0, 1.0))
+            quat = R.from_rotvec(angle * rot_axis).as_quat()  # [x, y, z, w]
+        return quat
+    
 class  LinAlgTool:
     def normalize(vec: NDArray[np.floating]) -> NDArray[np.floating]:
         norm = np.linalg.norm(vec)

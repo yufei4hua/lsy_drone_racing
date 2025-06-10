@@ -10,31 +10,48 @@ Note that the trajectory uses pre-defined waypoints instead of dynamically gener
 from __future__ import annotations  # Python 3.10 type hints
 
 from statistics import pvariance
-from typing import TYPE_CHECKING
-
+from typing import TYPE_CHECKING, List, Dict, Callable, Optional, Union, Set
+import os
 from Cython import p_void
 from matplotlib.offsetbox import VPacker
 import numpy as np
 import scipy
 from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
-from casadi import MX, DM, cos, sin, vertcat, dot, norm_2, floor, if_else, exp, power
+from casadi import MX, DM, cos, sin, vertcat, dot, norm_2, floor, if_else, exp, Function
 from scipy import linalg
 from scipy.fft import prev_fast_len
 from scipy.interpolate import CubicSpline
 from scipy.spatial.transform import Rotation as R
 from casadi import interpolant
 from sympy import true
-from torch import has_spectral
 from traitlets import TraitError
 
 from lsy_drone_racing.control.fresssack_controller import FresssackController
+from lsy_drone_racing.control.fresssack_controller import MultiArrayTx, MarkerArrayTx, CapsuleMarkerTx, MeshMarkerTx, PathTx, TFTx
+
 from lsy_drone_racing.control.easy_controller import EasyController
 from lsy_drone_racing.control import Controller
-from lsy_drone_racing.tools.ext_tools import TrajectoryTool
+from lsy_drone_racing.tools.ext_tools import TrajectoryTool, TransformTool
 from lsy_drone_racing.utils.utils import draw_line
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
+
+ROS_AVAILABLE = False
+try:
+    import rclpy
+    from rclpy.node import Node
+    from rclpy.publisher import Publisher
+    from rclpy.publisher import MsgType
+    from geometry_msgs.msg import PoseStamped, TransformStamped
+    from nav_msgs.msg import Path
+    from tf2_ros import TransformBroadcaster
+    from visualization_msgs.msg import Marker, MarkerArray
+
+    from transformations import quaternion_from_euler, euler_from_quaternion
+    ROS_AVAILABLE = True
+except:
+    ROS_AVAILABLE = False
 
 
 
@@ -50,7 +67,7 @@ class MPCC(EasyController):
             info: Additional environment information from the reset.
             config: The configuration of the environment.
         """
-        super().__init__(obs, info, config)
+        super().__init__(obs, info, config,  ros_tx_freq = 50)
         self.freq = config.env.freq
         self._tick = 0
 
@@ -111,6 +128,21 @@ class MPCC(EasyController):
         # build model & create solver
         self.acados_ocp_solver, self.ocp = self.create_ocp_solver(self.T_HORIZON, self.N, self.arc_trajectory)
 
+        # initialize ros tx
+        self.init_ros_tx()
+        
+        # initialize debug function for MPC
+        cost_dict = self.mpcc_cost_components()
+        self.cost_func_debug = Function(
+            'mpcc_cost_debug',
+            [self.x, self.u, self.p],
+            [cost_dict[k] for k in cost_dict],
+            ['x', 'u', 'p'],
+            list(cost_dict.keys()
+            )  # ['total', 'cost_l', ..., 'miu_cost']    
+        )
+
+
         # initialize
         self.last_theta = 0.0
         self.last_f_collective = 0.3
@@ -119,6 +151,100 @@ class MPCC(EasyController):
         self.config = config
         self.finished = False
 
+    def init_ros_tx(self):
+        if ROS_AVAILABLE and self.ros_tx:
+            self.mpcc_traj_tx = PathTx(
+                node_name = 'mpcc_path_tx',
+                topic_name = 'mpcc_traj',
+                queue_size = 10
+            )
+            self.path_tx = PathTx(
+                node_name = 'global_path_tx',
+                topic_name = 'global_path',
+                queue_size = 10
+            )
+            self.gate_tf_txs = [
+                TFTx(node_name = 'gate_' + str(i) + '_TF_tx', topic_name = 'gate_' + str(i))
+                for i in range(len(self.gates))
+            ]
+            
+            self.obstacle_tf_txs = [
+                TFTx(node_name = 'obstacle_' + str(i) + '_TF_tx', topic_name = 'obstacle_' + str(i))
+                for i in range(len(self.obstacles))
+            ]
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+
+            gate_mesh_file = os.path.join(current_dir, '..', 'ros', 'rviz','meshes', 'gate.dae')
+            gate_unobserved_mesh_file = os.path.join(current_dir, '..', 'ros', 'rviz','meshes', 'gate_not_sure.dae')
+            gate_passed_mesh_file = os.path.join(current_dir, '..', 'ros', 'rviz','meshes', 'gate_passed.dae')
+            self.gate_marker_txs = [
+                    MeshMarkerTx(
+                    node_name = 'gate_' + str(i) + '_marker_tx',
+                    topic_name = 'gate_' + str(i) + '_marker',
+                    mesh_path = [os.path.abspath(gate_unobserved_mesh_file),
+                                  os.path.abspath(gate_mesh_file),
+                                  os.path.abspath(gate_passed_mesh_file)],
+                    frame_id = 'gate_' + str(i),
+                    queue_size = 1
+                )
+                for i in range(len(self.gates))
+            ]
+
+            self.gate_marker_array_tx = MarkerArrayTx(
+                node_name = 'gate_marker_array_tx',
+                topic_name = 'gate_marker_array',
+                queue_size = 5
+            )
+            
+            obstacle_mesh_file = os.path.join(current_dir, '..', 'ros', 'rviz','meshes', 'obstacle.dae')
+            obstacle_unobserved_mesh_file = os.path.join(current_dir, '..', 'ros', 'rviz','meshes', 'obstacle_not_sure.dae')
+            self.obstacle_marker_txs = [
+                    MeshMarkerTx(
+                    node_name = 'obstacle_' + str(i) + '_marker_tx',
+                    topic_name = 'obstacle_' + str(i) + '_marker',
+                    mesh_path = [os.path.abspath(obstacle_unobserved_mesh_file),
+                                 os.path.abspath(obstacle_mesh_file)],
+                    frame_id = 'obstacle_' + str(i),
+                    queue_size = 1
+                )
+                for i in range(len(self.obstacles))
+            ]
+            self.obstacle_marker_array_tx = MarkerArrayTx(
+                node_name = 'obstacle_marker_array_tx',
+                topic_name = 'obstacle_marker_array',
+                queue_size = 5
+            )
+
+            self.collision_capsule_tx =  CapsuleMarkerTx(
+                    node_name = 'collision_capsule' + '_tx',
+                    topic_name = 'collision_capsule',
+                    frame_id = 'map',
+                    queue_size = 20
+                )            
+
+            self.capsule_marker_array_tx = MarkerArrayTx(
+                node_name = 'capsule_marker_array_tx',
+                topic_name = 'capsule_marker_array',
+                queue_size = 5,
+            )
+            self.mpc_costs_tx_keys = ['total',
+                        'cost_l',
+                        'C_l',
+                        'e_l_cost',
+                        'cost_c',
+                        'C_c',
+                        'e_c_cost',
+                        'ang_cost',
+                        'ctrl_cost',
+                        'cost_obs',
+                        'miu_cost']
+            self.mpc_costs_tx = MultiArrayTx(
+                node_name = 'cost_debug_tx', 
+                queue_size = 10,
+                keys = self.mpc_costs_tx_keys,
+                topic_prefix = 'mpcc_cost'
+            )
+            
     def export_quadrotor_ode_model(self) -> AcadosModel:
         """Symbolic Quadrotor Model."""
         # Define name of solver to be used in script
@@ -220,6 +346,11 @@ class MPCC(EasyController):
             self.obst_list
         )
 
+        # For ease of use, contatenate x, u, and p
+        self.x = states
+        self.u = inputs
+        self.p = params
+
         # Initialize the nonlinear model for NMPC formulation
         model = AcadosModel()
         model.name = model_name
@@ -296,9 +427,9 @@ class MPCC(EasyController):
             qc_dyn_list = np.maximum(qc_dyn_gate, qc_dyn_list)
         p_vals = np.concatenate([pd_list.flatten(), tp_list.flatten(), qc_dyn_list])
         return p_vals
-
-    def mpcc_cost(self):
-        """calculate mpcc cost function"""
+    
+    
+    def mpcc_cost_components(self):
         pos = vertcat(self.px, self.py, self.pz)
         ang = vertcat(self.roll, self.pitch, self.yaw)
         control_input = vertcat(self.f_collective_cmd, self.dr_cmd, self.dp_cmd, self.dy_cmd)
@@ -335,14 +466,46 @@ class MPCC(EasyController):
         # TODO: EXP: trick: make e_c smaller in direction of obstacle: e_c - factor * dot(obs_pos_vec, e_c)/norm(e_c) BUT: do this to closest obstacle or to all of them?
         q_c_factor = 1 - 0.9 * q_c_supress
 
-        mpcc_cost = (self.q_l + self.q_l_peak * qc_dyn_theta) * dot(e_l, e_l) + \
-                    q_c_factor * (self.q_c + self.q_c_peak * qc_dyn_theta) * dot(e_c, e_c) + \
-                    (ang.T @ self.Q_w @ ang) + \
-                    (control_input.T @ self.R_df @ control_input) + \
-                    self.obst_w * obst_cost + \
-                    q_c_factor * (-self.miu) * self.v_theta_cmd
+
+        # Break down the costs
+        C_l = self.q_l + self.q_l_peak * qc_dyn_theta
+        e_l_cost = dot(e_l, e_l)
+        cost_l = C_l * e_l_cost
+
+        C_c = self.q_c + self.q_c_peak * qc_dyn_theta
+        e_c_cost = dot(e_c, e_c)
+        cost_c = q_c_factor * C_c * e_c_cost
+
         
-        return mpcc_cost
+        ang_cost = ang.T @ self.Q_w @ ang
+        ctrl_cost = control_input.T @ self.R_df @ control_input
+
+        
+        cost_obs = self.obst_w * obst_cost
+
+        
+        miu_cost = q_c_factor * (-self.miu) * self.v_theta_cmd
+
+        
+        mpcc_cost = cost_l + cost_c + ang_cost + ctrl_cost + cost_obs + miu_cost
+
+        return {
+            'total': mpcc_cost,
+            'cost_l': cost_l,
+            'C_l': C_l,
+            'e_l_cost': e_l_cost,
+            'cost_c': cost_c,
+            'C_c': C_c,
+            'e_c_cost': e_c_cost,
+            'ang_cost': ang_cost,
+            'ctrl_cost': ctrl_cost,
+            'cost_obs': cost_obs,
+            'miu_cost': miu_cost,
+        }
+
+    def mpcc_cost(self):
+        """calculate mpcc cost function"""
+        return self.mpcc_cost_components()['total']
 
     def create_ocp_solver(
         self, Tf: float, N: int, trajectory: CubicSpline,  verbose: bool = False
@@ -368,10 +531,7 @@ class MPCC(EasyController):
         ocp.cost.cost_type = "EXTERNAL"
 
         """DEFINITION of GLOBAL MPC WEIGHTS"""
-        """DEFINITION of GLOBAL MPC WEIGHTS"""
-        """DEFINITION of GLOBAL MPC WEIGHTS"""
-        """DEFINITION of GLOBAL MPC WEIGHTS"""
-        """DEFINITION of GLOBAL MPC WEIGHTS"""
+
 
         # MPCC Cost Weights
         self.q_l = 180
@@ -429,6 +589,101 @@ class MPCC(EasyController):
         acados_ocp_solver = AcadosOcpSolver(ocp, json_file="mpcc_prescripted.json", verbose=verbose)
 
         return acados_ocp_solver, ocp
+    
+    def ros_transmit(self, obs):
+        if self.need_ros_tx(): 
+            self.path_tx.publish(
+                raw_data = {
+                    'traj' : self.arc_trajectory(self.arc_trajectory.x),
+                    'frame_id' : 'map'
+                }
+            )
+            for idx, tx in enumerate(self.gate_tf_txs):
+                tx.publish(
+                    raw_data = 
+                    {
+                        'pos' : self.gates[idx].pos,
+                        'quat' : self.gates[idx]._quat,
+                        'frame_id' : 'map'
+                    }
+                )
+            for idx, tx in enumerate(self.obstacle_tf_txs):
+                tx.publish(
+                    raw_data = 
+                    {
+                        'pos' : self.obstacles[idx].pos,
+                        'quat' : [0,0,0,1],
+                        'frame_id' : 'map'
+                    }
+                )
+        if self.need_ros_tx(slow = True): 
+            gate_marker_list : List[Marker] = []
+            for idx, tx in enumerate(self.gate_marker_txs):
+                marker : Marker = None
+                if self.next_gate > idx:
+                    marker = tx.process_data(
+                        {
+                            'idx' : 2
+                        }
+                    )
+                elif self.gates_visited[idx]:
+                    marker = tx.process_data(
+                        {
+                            'idx' : 1
+                        }
+                    )
+                else:
+                    marker = tx.process_data(
+                        {
+                            'idx' : 0
+                        }
+                    )
+                gate_marker_list.append(marker)
+            self.gate_marker_array_tx.publish(
+                {
+                    'markers' : gate_marker_list
+                }
+            )
+
+            obstacle_marker_list = []
+            for idx, tx in enumerate(self.obstacle_marker_txs):
+                marker : Marker = None
+                if self.obstacles_visited[idx]:
+                    marker = tx.process_data(
+                        {
+                            'idx' : 1
+                        }
+                        )
+                else:
+                    marker = tx.process_data(
+                        {
+                            'idx' : 0
+                        }
+                        )
+                obstacle_marker_list.append(marker)
+            self.obstacle_marker_array_tx.publish(
+                {
+                    'markers' : obstacle_marker_list
+                }
+            )
+            capsule_list:List[Marker] = []
+            for idx, item in enumerate(self.capsule_list):
+                a,b,r = item
+                marker_arr : MarkerArray = self.collision_capsule_tx.process_data(
+                    {
+                        'a' : a,
+                        'b' : b,
+                        'r' : r,
+                        'rgba': [1.0,1.0,0.0,0.3],
+                        'base_idx' : 3 * idx
+                    }
+                )
+                capsule_list = capsule_list + [marker for marker in marker_arr.markers]
+            self.capsule_marker_array_tx.publish(
+                 {
+                    'markers' : capsule_list
+                }
+            )
 
     def compute_control(
         self, obs: dict[str, NDArray[np.floating]], info: dict | None = None
@@ -546,11 +801,16 @@ class MPCC(EasyController):
         if self.acados_ocp_solver.solve() == 4:
             pass
 
-        ## update initial guess
-        self.x_guess = [self.acados_ocp_solver.get(i, "x") for i in range(self.N + 1)]
-        self.u_guess = [self.acados_ocp_solver.get(i, "u") for i in range(self.N)]
+        x_result = [self.acados_ocp_solver.get(i, "x") for i in range(self.N + 1)]
+        u_result = [self.acados_ocp_solver.get(i, "u") for i in range(self.N)]
+        p_result = [self.acados_ocp_solver.get(i, "p") for i in range(self.N)]
 
-        x1 = self.acados_ocp_solver.get(1, "x")
+        ## update initial guess
+        self.x_guess = x_result
+        self.u_guess = u_result
+
+        # x1 = self.acados_ocp_solver.get(1, "x")
+        x1 = x_result[1]
         w = 1 / self.config.env.freq / self.dt
         self.last_f_collective = self.last_f_collective * (1 - w) + x1[9] * w
         self.last_theta = self.last_theta * (1 - w) + x1[14] * w
@@ -564,13 +824,34 @@ class MPCC(EasyController):
                 self.last_rpy_cmd
             )
         )
+
+        # Calculate costs every steps for tuning
+        debug_costs : Dict[str, List[np.floating]] = {key : [] for key in self.mpc_costs_tx_keys}
+        
+        for i in range(self.N):
+            result = self.cost_func_debug(x_result[i], u_result[i], p_result[i])
+            for idx, value in enumerate(result):
+                debug_costs[self.mpc_costs_tx_keys[idx]].append(float(value))
+
         ## visualization
-        # test true theta and guess theta
+
+
+        pos_traj = np.array([x_result[i][:3] for i in range(self.N+1)])
+        if self.need_ros_tx():
+            self.mpcc_traj_tx.publish(
+                raw_data = {
+                    'traj' : pos_traj,
+                    'frame_id' : 'map'
+                }
+            )
+            self.mpc_costs_tx.publish(raw_data = debug_costs)
+        if self.need_ros_tx(slow=True):
+            pass
+
         try:
             # print(np.linalg.norm(obs['vel']))
             draw_line(self.env, self.arc_trajectory(self.arc_trajectory.x), rgba=np.array([1.0, 1.0, 1.0, 0.2]))
             draw_line(self.env, np.stack([self.arc_trajectory(self.last_theta), obs["pos"]]), rgba=np.array([0.0, 0.0, 1.0, 1.0]))
-            pos_traj = np.array([self.acados_ocp_solver.get(i, "x")[:3] for i in range(self.N+1)])
             draw_line(self.env, pos_traj[0:-1:5],rgba=np.array([1.0, 1.0, 0.0, 0.2]))
             if hasattr(self, "x_warmup_traj"):
                 draw_line(self.env, self.x_warmup_traj[0:-1:5],rgba=np.array([0.0, 1.0, 1.0, 0.2]))
@@ -600,6 +881,8 @@ class MPCC(EasyController):
     ) -> bool:
         """Increment the tick counter."""
         self.step_update(obs = obs)
+        self.update_target_gate(obs = obs)
+        self.ros_transmit(obs = obs)
 
         return self.finished
 
