@@ -17,7 +17,7 @@ from matplotlib.offsetbox import VPacker
 import numpy as np
 import scipy
 from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
-from casadi import MX, DM, cos, sin, vertcat, dot, norm_2, floor, if_else, exp, Function
+from casadi import MX, DM, cos, sin, vertcat, dot, norm_2, floor, if_else, exp, Function, power
 from scipy import linalg
 from scipy.fft import prev_fast_len
 from scipy.interpolate import CubicSpline
