@@ -29,3 +29,8 @@ lsy_drone_racing/control/test_controller.py
 lsy_drone_racing/ros/rviz/meshes/assets.xml
 lsy_drone_racing/ros/rviz/meshes/cf2.xml
 lsy_drone_racing/ros/rviz/meshes/scene.xml
+lsy_drone_racing/bags/record_bag.sh
+lsy_drone_racing/bags/record_bag.sh
+lsy_drone_racing/ros/rviz/visualization.rviz
+lsy_drone_racing/bags/record_bag.sh
+lsy_drone_racing/ros/rviz/visualization.rviz
