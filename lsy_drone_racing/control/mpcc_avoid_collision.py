@@ -55,7 +55,7 @@ except:
 
 
 
-class MPCC(EasyController):
+class MPCC(FresssackController):
     """Implementation of MPCC using the collective thrust and attitude interface."""
 
     def __init__(self, obs: dict[str, NDArray[np.floating]], info: dict, config: dict, env=None):
@@ -67,7 +67,7 @@ class MPCC(EasyController):
             info: Additional environment information from the reset.
             config: The configuration of the environment.
         """
-        super().__init__(obs, info, config,  ros_tx_freq = 50)
+        super().__init__(obs, info, config, ros_tx_freq = None)
         self.freq = config.env.freq
         self._tick = 0
 
@@ -152,6 +152,17 @@ class MPCC(EasyController):
         self.finished = False
 
     def init_ros_tx(self):
+        self.mpc_costs_tx_keys = ['total',
+                        'cost_l',
+                        'C_l',
+                        'e_l_cost',
+                        'cost_c',
+                        'C_c',
+                        'e_c_cost',
+                        'ang_cost',
+                        'ctrl_cost',
+                        'cost_obs',
+                        'miu_cost']
         if ROS_AVAILABLE and self.ros_tx:
             self.mpcc_traj_tx = PathTx(
                 node_name = 'mpcc_path_tx',
@@ -227,17 +238,7 @@ class MPCC(EasyController):
                 topic_name = 'capsule_marker_array',
                 queue_size = 5,
             )
-            self.mpc_costs_tx_keys = ['total',
-                        'cost_l',
-                        'C_l',
-                        'e_l_cost',
-                        'cost_c',
-                        'C_c',
-                        'e_c_cost',
-                        'ang_cost',
-                        'ctrl_cost',
-                        'cost_obs',
-                        'miu_cost']
+            
             self.mpc_costs_tx = MultiArrayTx(
                 node_name = 'cost_debug_tx', 
                 queue_size = 10,
