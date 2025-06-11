@@ -796,7 +796,7 @@ class FresssackController(Controller):
         dot_1 = np.dot(v_1, self.gates[self.next_gate].norm_vec)
         if(dot_0 * dot_1 < 0):
             self.next_gate = self.next_gate + 1 if self.next_gate < len(self.gates) - 1 else self.next_gate
-            print('Next Gate:' + str(self.next_gate))
+            # print('Next Gate:' + str(self.next_gate))
             return True
         else:
             return False

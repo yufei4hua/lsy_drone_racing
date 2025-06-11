@@ -99,7 +99,7 @@ class MPCC(EasyController):
         # trajectory = self.trajectory_generate(self.t_total, waypoints)
         # pre-planned trajectory
         # t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/param_a_5_sec_offsets.csv")
-        t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/test_run.csv")
+        t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/test_run_third_gate_modified.csv")
         trajectory = CubicSpline(t, pos)
         # # easy controller trajectory
         # gates_rotates = R.from_quat(obs['gates_quat'])
