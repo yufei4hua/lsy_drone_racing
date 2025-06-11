@@ -105,7 +105,7 @@ def test_models(model_paths, num_episodes=999, render=True):
     
 
 if __name__ == "__main__":
-    lesson = 3
+    lesson = 4
     latest_model_path, lesson_train_idx = get_latest_model_path(Path(__file__).parent / "log3", lesson, idx=None)
     print(f"Testing Lesson {lesson}.{lesson_train_idx}")
     model_paths = [

@@ -66,34 +66,34 @@ def main():
     eval_callback = EvalCallback(vec_env, best_model_save_path=log_dir, eval_freq=10000, n_eval_episodes=5)
 
     # === 3. 初始化 PPO 模型 ===
-    # policy_kwargs = dict(
-    #     net_arch=[128, 128],         # 两层，每层 128
-    #     activation_fn=nn.ReLU        # 激活函数（默认是 Tanh，可以改为 ReLU）
-    # )
-    # model = PPO(
-    #     policy="MlpPolicy",
-    #     env=vec_env,
-    #     verbose=1,
-    #     tensorboard_log=log_dir,
-    #     policy_kwargs=policy_kwargs,
-    #     n_steps=2048,
-    #     batch_size=64,
-    #     gae_lambda=0.95,
-    #     gamma=0.99,
-    #     learning_rate=3e-4,
-    #     ent_coef=0.0,
-    #     device="cpu",
-    # )
+    policy_kwargs = dict(
+        net_arch=[128, 128],         # 两层，每层 128
+        activation_fn=nn.ReLU        # 激活函数（默认是 Tanh，可以改为 ReLU）
+    )
+    model = PPO(
+        policy="MlpPolicy",
+        env=vec_env,
+        verbose=1,
+        tensorboard_log=log_dir,
+        policy_kwargs=policy_kwargs,
+        n_steps=2048,
+        batch_size=64,
+        gae_lambda=0.95,
+        gamma=0.99,
+        learning_rate=3e-4,
+        ent_coef=0.0,
+        device="cpu",
+    )
     # 加载模型
-    lesson = 3
-    lesson_train_idx = None # default None, use if need reset to earlier model
+    lesson = 4
+    lesson_train_idx = 0 # default None, use if need reset to earlier model
     latest_model_path, lesson_train_idx = get_latest_model_path(log_dir, lesson, idx=lesson_train_idx)
     model = PPO.load(latest_model_path, env=vec_env, device="cpu")
     print(f"Learning Lesson {lesson}.{lesson_train_idx}")
 
     # === 4. 启动训练 ===
     if num_envs > 1:
-        model.learn(total_timesteps=6*400000, callback=[checkpoint_callback, eval_callback])
+        model.learn(total_timesteps=2*400000, callback=[checkpoint_callback, eval_callback])
     else: # for visualization
         render_callback = RenderCallback(render_freq=1)
         model.learn(total_timesteps=10000, callback=[render_callback])

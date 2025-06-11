@@ -47,10 +47,50 @@ Train: lesson 2.3
     result: still afraid, but better collision avoidance
     comments: try next lesson in racing environment
 
-Train: lesson 3.0 Racing environment with imitation learning
+Train: lesson 3.1 Racing environment with imitation learning
     n_envs: 20
     steps: 6 * 400000
     duration: 38min
     changes: +k_gate -r
     result: still stop in front of the gates?? why?
+    comments: perhaps caused by r_center 
+
+Train: lesson 3.2 Racing environment with imitation learning
+    n_envs: 20
+    steps: 6 * 400000
+    duration: 38min
+    changes: -r_center
+    result: still stop
+    comments: 
+
+Train: lesson 3.3 Racing environment with imitation learning
+    n_envs: 20
+    steps: 6 * 400000
+    duration: 38min
+    changes: +k_vel +k_imit +k_success
+    result: just won't get in the fxxking gate
+    comments: I might just try start from scratch
+
+Train: lesson 4.0 Racing environment with imitation learning from scratch
+    n_envs: 20
+    steps: 6 * 400000
+    duration: 56min
+    changes: recreate model
+    result: works pretty nice! able to pass four gates! However directly crashes on original takeoff position.
+    comments: I'll add original start position and retrain a model.
+
+Train: lesson 4.1 Racing environment with imitation learning from scratch
+    n_envs: 20
+    steps: 12 * 400000
+    duration: 86min
+    changes: add takeoff position, + k_vel
+    result: moving faster, but not stable 
+    comments: 
+
+Train: lesson 4.2 Racing environment with random gate
+    n_envs: 20
+    steps: 6 * 400000
+    duration: 38min
+    changes: remove imitation learning, add random gates
+    result: 
     comments: 
