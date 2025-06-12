@@ -315,7 +315,7 @@ class MPCC(EasyController):
         
         self.Q_w = 1 * DM(np.eye(3))
         self.R_df = DM(np.diag([1,0.5,0.5,0.5]))
-        self.miu = 10
+        self.miu = 0.5
         # param A: works and works well
 
         
