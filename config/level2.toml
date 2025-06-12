@@ -4,8 +4,8 @@
 # | :-----------------: | :-----------------------: | :-------------------------: | :-------------------: |
 # | `level2.toml`       | **Yes**                   | **Yes**                     | Learning, re-planning |
 [controller]
-file = "mpcc_avoid_collision.py" # Put your controller file name here. Specifying a controller as argument to scripts will override this setting. Controllers are located in `lsy_drone_racing/control/`
-# mpcc mpcc_avoid_collision mpcc_easy_replan mpc_pre_scripted easy_controller
+file = "mpcc_avoid_collision_new.py" # Put your controller file name here. Specifying a controller as argument to scripts will override this setting. Controllers are located in `lsy_drone_racing/control/`
+# mpcc mpcc_avoid_collision mpcc_easy_replan mpc_pre_scripted easy_controller mpcc_avoid_collision_new
 
 [deploy]
 ### Settings only relevant for deployment

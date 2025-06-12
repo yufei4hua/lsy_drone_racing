@@ -956,12 +956,14 @@ class FresssackController(Controller):
             capsule_list.append((a, b, r))
         return capsule_list
     
-    def get_capsule_param(self) -> NDArray[np.floating]:
+    def get_capsule_param(self, include_gate=True) -> NDArray[np.floating]:
         """put all capsules into a flat array to write to model.p
         Returns:
             NDArray of capsules parameters like [a, b, r, a, b, r, ...]
         """
-        capsule_list = self._gen_gate_capsule() + self._gen_pillar_capsule()
+        capsule_list = self._gen_pillar_capsule()
+        if include_gate:
+            capsule_list = capsule_list + self._gen_gate_capsule()
 
         capsule_params = []
         for a, b, r in capsule_list:
@@ -970,3 +972,7 @@ class FresssackController(Controller):
             capsule_params.append(float(r))
 
         return np.array(capsule_params, dtype=np.float32)
+    
+    def get_gate_param(self):
+        gate_param_list = [np.concatenate([gate.pos, gate.norm_vec]) for gate in self.gates]
+        return np.concatenate(gate_param_list)
