@@ -67,7 +67,7 @@ class MPCC(FresssackController):
             info: Additional environment information from the reset.
             config: The configuration of the environment.
         """
-        super().__init__(obs, info, config, ros_tx_freq = None)
+        super().__init__(obs, info, config, ros_tx_freq = 50.0)
         self.freq = config.env.freq
         self._tick = 0
 
@@ -544,20 +544,20 @@ class MPCC(FresssackController):
         self.q_c_peak = 100
         self.Q_w = 1 * DM(np.eye(3))
         self.R_df = DM(np.diag([1,0.4,0.4,0.4]))
-        self.miu = 0.3
+        self.miu = 0.2
         # obstacle relavent
         self.obst_w = 50
         self.d_extend = 0.15 # extend distance to supress q_c
         # velocity bounds
         self.lb_vel = 0.7
-        self.ub_vel = 2.0
+        self.ub_vel = 1.5
 
         
         ocp.model.cost_expr_ext_cost = self.mpcc_cost()
 
         # Set State Constraints
         ocp.constraints.lbx = np.array([0.1, 0.1, -1.57, -1.57, -1.57])
-        ocp.constraints.ubx = np.array([0.65, 0.65, 1.57, 1.57, 1.57])
+        ocp.constraints.ubx = np.array([0.55, 0.55, 1.57, 1.57, 1.57])
         ocp.constraints.idxbx = np.array([9, 10, 11, 12, 13])
 
         # Set Input Constraints
@@ -802,6 +802,10 @@ class MPCC(FresssackController):
             self.acados_ocp_solver.set(i, "lbu", np.array([-10.0, -10.0, -10.0, -10.0, self.lb_vel]))
             self.acados_ocp_solver.set(i, "ubu", np.array([10.0, 10.0, 10.0, 10.0, dyn_ub_vel]))
 
+        # test:
+        if self.last_theta >= 8.59:
+            self.finished = True
+
         if self.acados_ocp_solver.solve() == 4:
             pass
 
@@ -873,6 +877,7 @@ class MPCC(FresssackController):
             pass
 
         return cmd
+        return np.zeros_like(cmd)
 
     def step_callback(
         self,

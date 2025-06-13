@@ -1,4 +1,5 @@
 from __future__ import annotations
+from sre_constants import CATEGORY_LINEBREAK
 from typing import TYPE_CHECKING
 from typing import List, Dict, Tuple, Set, Union, Callable, Optional
 import pandas as pd
@@ -487,9 +488,9 @@ class FresssackController(Controller):
         
         self.gates : List[Gate] = []
         self.gates_visited : List[bool] = None
-        gates_pos_init  = obs['gates_pos']
+        self.gates_pos_init  = obs['gates_pos'] # save initial gates positions
         gates_rot_init  = obs['gates_quat']
-        gates_num = gates_pos_init.shape[0]
+        gates_num = self.gates_pos_init.shape[0]
 
 
         if np.isscalar(gate_inner_size):
@@ -535,7 +536,7 @@ class FresssackController(Controller):
         self.gate_vel_limit = vel_limit
 
         for i in range(gates_num):
-            self.gates.append(Gate(pos = gates_pos_init[i],
+            self.gates.append(Gate(pos = self.gates_pos_init[i],
                                 quat = gates_rot_init[i],
                                 inner_width = self.gate_inner_size[i],
                                 inner_height = self.gate_inner_size[i],
@@ -976,3 +977,38 @@ class FresssackController(Controller):
     def get_gate_param(self):
         gate_param_list = [np.concatenate([gate.pos, gate.norm_vec]) for gate in self.gates]
         return np.concatenate(gate_param_list)
+    
+    # below is for mpcc traj translation
+    def _gen_pillar_cylinder(self):
+        """init pillar cylinder from self.obstacles
+        Returns:
+            List of horizontal coordinates
+        """
+        cylinder_list = []
+        for obst in self.obstacles:
+            x, y = obst.pos.copy()[:2]
+            r = obst.safe_radius
+            cylinder_list.append((x, y, r))
+        return cylinder_list
+    
+    def get_cylinder_param(self) -> NDArray[np.floating]:
+        """put all cylinders into a flat array to write to model.p
+        Returns:
+            NDArray of cylinders parameters like [x, y, r, x, y, r, ...]
+        """
+        cylinder_list = self._gen_pillar_cylinder()
+
+        cylinder_params = []
+        for x, y, r in cylinder_list:
+            cylinder_params.append(x)
+            cylinder_params.append(y)
+            cylinder_params.append(r)
+        return np.array(cylinder_params, dtype=np.float32)
+    
+    def get_curr_gate_offset(self, curr_gate):
+        """return current gate position change
+        run detect pos change outside in control loop
+        Returns:
+            NDArray(3): position change of current target gate
+        """
+        return self.gates[curr_gate].pos - self.gates_pos_init[curr_gate]
