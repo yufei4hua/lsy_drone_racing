@@ -1012,3 +1012,11 @@ class FresssackController(Controller):
             NDArray(3): position change of current target gate
         """
         return self.gates[curr_gate].pos - self.gates_pos_init[curr_gate]
+
+    def hex2rgba(self, hex="#FFFFFFFF"):
+        hex = hex.lstrip('#')
+        r, g, b, a = int(hex[0:2], 16), int(hex[2:4], 16), int(hex[4:6], 16), int(hex[6:8], 16)
+        rgba = np.array([r/255, g/255, b/255, a/255])
+        return rgba
+    
+    

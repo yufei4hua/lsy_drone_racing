@@ -4,7 +4,7 @@
 # | :-----------------: | :-----------------------: | :-------------------------: | :---------------: |
 # | `level0.toml`       | *No*                      | *No*                        | Perfect knowledge |
 [controller]
-file = "mpcc_avoid_collision_new.py" # Put your controller file name here. Specifying a controller as argument to scripts will override this setting. Controllers are located in `lsy_drone_racing/control/`
+file = "mpcc.py" # Put your controller file name here. Specifying a controller as argument to scripts will override this setting. Controllers are located in `lsy_drone_racing/control/`
 # mpcc mpcc_avoid_collision mpc_pre_scripted mpcc_avoid_collision_new mpcc_traj_translation
 
 [deploy]
