@@ -47,7 +47,7 @@ class TestController(FresssackController):
     """A-star trajectory controller."""
 
 
-    def __init__(self, obs: dict[str, NDArray[np.floating]], info: dict, config: dict):
+    def __init__(self, obs: dict[str, NDArray[np.floating]], info: dict, config: dict, env = None):
         """Initialization of the controller.
 
         Args:
@@ -259,7 +259,7 @@ class TestController(FresssackController):
         # self.path_raw = a_star_path
         start_vel = np.array([0,0,0])
         t_axis = np.linspace(0.0, len(self.path_raw) * dt, len(self.path_raw))
-        FresssackController.save_trajectory(np.hstack([self.path_raw, self.vel_raw]), dt = dt, path = r"repo/lsy_drone_racing/planned_trajectories/test_run.csv")
+        FresssackController.save_trajectory(np.hstack([self.path_raw, self.vel_raw]), dt = dt, path = r"lsy_drone_racing/planned_trajectories/test_run.csv")
         
         initial_B_spline = UniformBSpline()
         initial_B_spline.parameter_2_bspline_uniform(self.path_raw,v_start = start_vel, v_end = goal_vel, dt = dt)

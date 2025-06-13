@@ -21,7 +21,6 @@ from scipy.interpolate import CubicSpline
 from scipy.spatial.transform import Rotation as R
 from casadi import interpolant
 from sympy import true
-from torch import has_spectral
 from traitlets import TraitError
 
 from lsy_drone_racing.control.fresssack_controller import FresssackController
