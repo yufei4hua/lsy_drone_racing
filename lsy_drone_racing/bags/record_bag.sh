@@ -1,7 +1,7 @@
 #!/bin/bash
 
-eval "$(micromamba shell hook --shell=bash)"
-micromamba activate race
+eval "$(mamba shell hook --shell=bash)"
+mamba activate race
 
 BAG_NAME=${1:-my_bag}
 TIMESTAMP=$(date +%Y-%m-%d-%H-%M-%S)

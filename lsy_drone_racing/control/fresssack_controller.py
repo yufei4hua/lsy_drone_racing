@@ -1,4 +1,5 @@
 from __future__ import annotations
+from sre_constants import CATEGORY_LINEBREAK
 from typing import TYPE_CHECKING
 from typing import List, Dict, Tuple, Set, Union, Callable, Optional
 import pandas as pd
@@ -487,9 +488,9 @@ class FresssackController(Controller):
         
         self.gates : List[Gate] = []
         self.gates_visited : List[bool] = None
-        gates_pos_init  = obs['gates_pos']
+        self.gates_pos_init  = obs['gates_pos'] # save initial gates positions
         gates_rot_init  = obs['gates_quat']
-        gates_num = gates_pos_init.shape[0]
+        gates_num = self.gates_pos_init.shape[0]
 
 
         if np.isscalar(gate_inner_size):
@@ -535,7 +536,7 @@ class FresssackController(Controller):
         self.gate_vel_limit = vel_limit
 
         for i in range(gates_num):
-            self.gates.append(Gate(pos = gates_pos_init[i],
+            self.gates.append(Gate(pos = self.gates_pos_init[i],
                                 quat = gates_rot_init[i],
                                 inner_width = self.gate_inner_size[i],
                                 inner_height = self.gate_inner_size[i],
@@ -796,7 +797,7 @@ class FresssackController(Controller):
         dot_1 = np.dot(v_1, self.gates[self.next_gate].norm_vec)
         if(dot_0 * dot_1 < 0):
             self.next_gate = self.next_gate + 1 if self.next_gate < len(self.gates) - 1 else self.next_gate
-            print('Next Gate:' + str(self.next_gate))
+            # print('Next Gate:' + str(self.next_gate))
             return True
         else:
             return False
@@ -956,12 +957,14 @@ class FresssackController(Controller):
             capsule_list.append((a, b, r))
         return capsule_list
     
-    def get_capsule_param(self) -> NDArray[np.floating]:
+    def get_capsule_param(self, include_gate=True) -> NDArray[np.floating]:
         """put all capsules into a flat array to write to model.p
         Returns:
             NDArray of capsules parameters like [a, b, r, a, b, r, ...]
         """
-        capsule_list = self._gen_gate_capsule() + self._gen_pillar_capsule()
+        capsule_list = self._gen_pillar_capsule()
+        if include_gate:
+            capsule_list = capsule_list + self._gen_gate_capsule()
 
         capsule_params = []
         for a, b, r in capsule_list:
@@ -970,3 +973,50 @@ class FresssackController(Controller):
             capsule_params.append(float(r))
 
         return np.array(capsule_params, dtype=np.float32)
+    
+    def get_gate_param(self):
+        gate_param_list = [np.concatenate([gate.pos, gate.norm_vec]) for gate in self.gates]
+        return np.concatenate(gate_param_list)
+    
+    # below is for mpcc traj translation
+    def _gen_pillar_cylinder(self):
+        """init pillar cylinder from self.obstacles
+        Returns:
+            List of horizontal coordinates
+        """
+        cylinder_list = []
+        for obst in self.obstacles:
+            x, y = obst.pos.copy()[:2]
+            r = obst.safe_radius
+            cylinder_list.append((x, y, r))
+        return cylinder_list
+    
+    def get_cylinder_param(self) -> NDArray[np.floating]:
+        """put all cylinders into a flat array to write to model.p
+        Returns:
+            NDArray of cylinders parameters like [x, y, r, x, y, r, ...]
+        """
+        cylinder_list = self._gen_pillar_cylinder()
+
+        cylinder_params = []
+        for x, y, r in cylinder_list:
+            cylinder_params.append(x)
+            cylinder_params.append(y)
+            cylinder_params.append(r)
+        return np.array(cylinder_params, dtype=np.float32)
+    
+    def get_curr_gate_offset(self, curr_gate):
+        """return current gate position change
+        run detect pos change outside in control loop
+        Returns:
+            NDArray(3): position change of current target gate
+        """
+        return self.gates[curr_gate].pos - self.gates_pos_init[curr_gate]
+
+    def hex2rgba(self, hex="#FFFFFFFF"):
+        hex = hex.lstrip('#')
+        r, g, b, a = int(hex[0:2], 16), int(hex[2:4], 16), int(hex[4:6], 16), int(hex[6:8], 16)
+        rgba = np.array([r/255, g/255, b/255, a/255])
+        return rgba
+    
+    

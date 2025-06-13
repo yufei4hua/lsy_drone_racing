@@ -4,7 +4,8 @@
 # | :-----------------: | :-----------------------: | :-------------------------: | :---------------: |
 # | `level0.toml`       | *No*                      | *No*                        | Perfect knowledge |
 [controller]
-file = "mpcc_precripted_trajectory.py" # Put your controller file name here. Specifying a controller as argument to scripts will override this setting. Controllers are located in `lsy_drone_racing/control/`
+file = "mpcc.py" # Put your controller file name here. Specifying a controller as argument to scripts will override this setting. Controllers are located in `lsy_drone_racing/control/`
+# mpcc mpcc_avoid_collision mpc_pre_scripted mpcc_avoid_collision_new mpcc_traj_translation
 
 [deploy]
 ### Settings only relevant for deployment
@@ -13,10 +14,10 @@ check_race_track = true
 # Whether to check if the drone start position is within the limits specified down below.
 check_drone_start_pos = true
 # Lets you practice your controller without putting up gates & obstacles, assumes nominal positions given below.
-real_track_objects = true
+real_track_objects = false
 
 [[deploy.drones]]
-id = 91
+id = 98
 channel = 100
 
 [sim]
@@ -82,3 +83,9 @@ fn = "uniform"
 [env.disturbances.dynamics.kwargs]
 minval = [-0.1, -0.1, -0.1]
 maxval = [0.1, 0.1, 0.1]
+
+[env.randomizations.drone_mass]
+fn = "uniform"
+[env.randomizations.drone_mass.kwargs]
+minval = 0.006
+maxval = 0.008

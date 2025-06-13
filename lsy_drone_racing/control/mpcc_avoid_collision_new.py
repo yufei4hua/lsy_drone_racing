@@ -9,27 +9,18 @@ Note that the trajectory uses pre-defined waypoints instead of dynamically gener
 
 from __future__ import annotations  # Python 3.10 type hints
 
-from statistics import pvariance
 from typing import TYPE_CHECKING, List, Dict, Callable, Optional, Union, Set
 import os
-from Cython import p_void
-from matplotlib.offsetbox import VPacker
 import numpy as np
-import scipy
 from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
 from casadi import MX, DM, cos, sin, vertcat, dot, norm_2, floor, if_else, exp, Function, power
-from scipy import linalg
-from scipy.fft import prev_fast_len
 from scipy.interpolate import CubicSpline
 from scipy.spatial.transform import Rotation as R
 from casadi import interpolant
-from sympy import true
-from traitlets import TraitError
 
 from lsy_drone_racing.control.fresssack_controller import FresssackController
 from lsy_drone_racing.control.fresssack_controller import MultiArrayTx, MarkerArrayTx, CapsuleMarkerTx, MeshMarkerTx, PathTx, TFTx
 
-from lsy_drone_racing.control.easy_controller import EasyController
 from lsy_drone_racing.control import Controller
 from lsy_drone_racing.tools.ext_tools import TrajectoryTool, TransformTool
 from lsy_drone_racing.utils.utils import draw_line
@@ -67,7 +58,7 @@ class MPCC(FresssackController):
             info: Additional environment information from the reset.
             config: The configuration of the environment.
         """
-        super().__init__(obs, info, config, ros_tx_freq = 50.0)
+        super().__init__(obs, info, config, ros_tx_freq = None)
         self.freq = config.env.freq
         self._tick = 0
 
@@ -112,13 +103,16 @@ class MPCC(FresssackController):
         # trajectory = self.trajectory_generate(self.t_total, waypoints)
 
         # global params
-        self.N = 60
-        self.T_HORIZON = 0.7
+        self.N = 40
+        self.T_HORIZON = 0.6
         self.dt = self.T_HORIZON / self.N
         self.model_arc_length = 0.05 # the segment interval for trajectory to be input to the model
         self.model_traj_length = 12 # maximum trajectory length the param can take
-        self.num_ostacles = 4*(4+1) # elements: 4 * (gate: 4 + pillar: 1);    each capsule: 7
-        self.capsule_list = self._gen_pillar_capsule() + self._gen_gate_capsule()# for now only for visualization
+        self.model_traj_N = int(self.model_traj_length/self.model_arc_length)
+        self.num_ostacles = len(obs['obstacles_pos'])  # elements: 4 * (pillar: 1);    each capsule: 7
+        self.capsule_list = self._gen_pillar_capsule() # for now only for visualization
+        self.num_gates = len(obs['gates_pos'])
+        # self.gates_norm_list = [gate.norm_vec for gate in self.gates] # 4 * 3 = 12
 
         # trajectory reparameterization
         self.traj_tool = TrajectoryTool()
@@ -162,7 +156,8 @@ class MPCC(FresssackController):
                         'ang_cost',
                         'ctrl_cost',
                         'cost_obs',
-                        'miu_cost']
+                        'miu_cost',
+                        'cost_g_c']
         if ROS_AVAILABLE and self.ros_tx:
             self.mpcc_traj_tx = PathTx(
                 node_name = 'mpcc_path_tx',
@@ -336,15 +331,17 @@ class MPCC(FresssackController):
         )
 
         # define dynamic trajectory input & obstacle parameters input
-        self.pd_list = MX.sym("pd_list", 3*int(self.model_traj_length/self.model_arc_length))
-        self.tp_list = MX.sym("tp_list", 3*int(self.model_traj_length/self.model_arc_length))
-        self.qc_dyn = MX.sym("qc_dyn", 1*int(self.model_traj_length/self.model_arc_length))
-        self.obst_list = MX.sym("obst_list", self.num_ostacles * 7) # (4*4+4)*7 = 140
+        self.pd_list = MX.sym("pd_list", 3*self.model_traj_N)
+        self.tp_list = MX.sym("tp_list", 3*self.model_traj_N)
+        self.qc_dyn = MX.sym("qc_dyn", 4*self.model_traj_N)
+        self.obst_list = MX.sym("obst_list", self.num_ostacles * 7) # 4 * 7 = 28
+        self.gates_param_list = MX.sym("gates_param_list", self.num_gates * (3+3)) # 4 * 6 = 24
         params = vertcat(
             self.pd_list, 
             self.tp_list,
             self.qc_dyn,
-            self.obst_list
+            self.obst_list,
+            self.gates_param_list
         )
 
         # For ease of use, contatenate x, u, and p
@@ -421,12 +418,14 @@ class MPCC(FresssackController):
         theta_list = np.arange(0, self.model_traj_length, self.model_arc_length)
         pd_list = trajectory(theta_list)
         tp_list = trajectory.derivative(1)(theta_list)
-        qc_dyn_list = np.zeros_like(theta_list)
-        for gate in self.gates:
+        gate_theta_list, _ = self.traj_tool.find_gate_waypoint(self.arc_trajectory, [gate.pos for gate in self.gates])
+        qc_dyn_list = np.zeros((self.num_gates, theta_list.shape[0]))
+        for idx, gate in enumerate(self.gates):
             distances = np.linalg.norm(pd_list - gate.pos, axis=-1)
-            qc_dyn_gate = np.exp(-5 * distances**2) # gaussian
-            qc_dyn_list = np.maximum(qc_dyn_gate, qc_dyn_list)
-        p_vals = np.concatenate([pd_list.flatten(), tp_list.flatten(), qc_dyn_list])
+            qc_dyn_gate_front = np.exp(-distances**2 / (0.5*self.q_c_sigma1[idx])**2) # gaussian
+            qc_dyn_gate_behind = np.exp(-distances**2 / (0.5*self.q_c_sigma2[idx])**2) # gaussian
+            qc_dyn_list[idx] = qc_dyn_gate_front * (theta_list < gate_theta_list[idx]) + qc_dyn_gate_behind * (theta_list >= gate_theta_list[idx])
+        p_vals = np.concatenate([pd_list.flatten(), tp_list.flatten(), qc_dyn_list.flatten()])
         return p_vals
     
     
@@ -439,11 +438,26 @@ class MPCC(FresssackController):
         theta_list = np.arange(0, self.model_traj_length, self.model_arc_length)
         pd_theta = self.casadi_linear_interp(self.theta, theta_list, self.pd_list)
         tp_theta = self.casadi_linear_interp(self.theta, theta_list, self.tp_list)
-        qc_dyn_theta = self.casadi_linear_interp(self.theta, theta_list, self.qc_dyn, dim=1)
+        qc_dyn_theta_list = [self.casadi_linear_interp(self.theta, theta_list, self.qc_dyn[i * self.model_traj_N: (i+1) * self.model_traj_N], dim=1) for i in range(self.num_gates)]
+        qc_dyn_theta = 0
+        for qc in qc_dyn_theta_list:
+            qc_dyn_theta += qc
         tp_theta_norm = tp_theta / norm_2(tp_theta)
         e_theta = pos - pd_theta
         e_l = dot(tp_theta_norm, e_theta) * tp_theta_norm
         e_c = e_theta - e_l
+
+        # cost for gates
+        cost_g_c = 0.0
+        for i in range(self.num_gates):
+            idx = i * 6
+            gate_pos = self.gates_param_list[idx:idx+3]
+            gate_norm = self.gates_param_list[idx+3:idx+6]
+            e_gate_theta = pos - gate_pos
+            e_gate_l = dot(gate_norm, e_gate_theta) * gate_norm
+            e_gate_c = e_gate_theta - e_gate_l
+            e_gate_c_square = dot(e_gate_c, e_gate_c)
+            cost_g_c += self.q_c_peak[i] * qc_dyn_theta_list[i] * e_gate_c_square
 
         # cost for obstacles
         q_c_supress = 0.0
@@ -473,11 +487,10 @@ class MPCC(FresssackController):
         e_l_cost = dot(e_l, e_l)
         cost_l = C_l * e_l_cost
 
-        C_c = self.q_c + self.q_c_peak * qc_dyn_theta
+        C_c = self.q_c - self.q_c * qc_dyn_theta
         e_c_cost = dot(e_c, e_c)
-        cost_c = q_c_factor * C_c * e_c_cost
+        cost_c = C_c * e_c_cost
 
-        
         ang_cost = ang.T @ self.Q_w @ ang
         ctrl_cost = control_input.T @ self.R_df @ control_input
 
@@ -488,7 +501,7 @@ class MPCC(FresssackController):
         miu_cost = q_c_factor * (-self.miu) * self.v_theta_cmd
 
         
-        mpcc_cost = cost_l + cost_c + ang_cost + ctrl_cost + cost_obs + miu_cost
+        mpcc_cost = cost_l + cost_c + ang_cost + ctrl_cost + cost_obs + miu_cost + cost_g_c
 
         return {
             'total': mpcc_cost,
@@ -502,6 +515,7 @@ class MPCC(FresssackController):
             'ctrl_cost': ctrl_cost,
             'cost_obs': cost_obs,
             'miu_cost': miu_cost,
+            'cost_g_c': cost_g_c,
         }
 
     def mpcc_cost(self):
@@ -540,17 +554,19 @@ class MPCC(FresssackController):
         # MPCC Cost Weights
         self.q_l = 180
         self.q_l_peak = 650
-        self.q_c =  80
-        self.q_c_peak = 100
+        self.q_c = 80
+        self.q_c_peak = [800, 800, 800, 800]
+        self.q_c_sigma1 = [0.5, 0.5, 0.5, 0.3]
+        self.q_c_sigma2 = [0.2, 0.2, 0.5, 0.5]
         self.Q_w = 1 * DM(np.eye(3))
         self.R_df = DM(np.diag([1,0.4,0.4,0.4]))
-        self.miu = 0.2
+        self.miu = 0.5
         # obstacle relavent
         self.obst_w = 50
         self.d_extend = 0.15 # extend distance to supress q_c
         # velocity bounds
         self.lb_vel = 0.7
-        self.ub_vel = 1.5
+        self.ub_vel = 1.9
 
         
         ocp.model.cost_expr_ext_cost = self.mpcc_cost()
@@ -570,9 +586,13 @@ class MPCC(FresssackController):
         # Set initial reference trajectory
         traj_param = self.get_updated_traj_param(self.arc_trajectory)
         # Set initial obstacle parameters
-        obst_param = self.get_capsule_param()
-        p_vals = np.concatenate([traj_param, obst_param])
+        obst_param = self.get_capsule_param(include_gate=False)
+        # Set initial gate parameters
+        gate_param = self.get_gate_param()
+        # stuff parameters 
+        p_vals = np.concatenate([traj_param, obst_param, gate_param])
         ocp.parameter_values = p_vals
+
 
         # Solver Options
         ocp.solver_options.qp_solver = "FULL_CONDENSING_HPIPM"  # FULL_CONDENSING_QPOASES
@@ -702,7 +722,6 @@ class MPCC(FresssackController):
         Returns:
             The collective thrust and orientation [t_des, r_des, p_des, y_des] as a numpy array.
         """
-
         q = obs["quat"]
         r = R.from_quat(q)
         # Convert to Euler angles in XYZ order
@@ -736,11 +755,12 @@ class MPCC(FresssackController):
         need_obs_update, _ = self.update_obstacle_if_needed(obs)
         if need_gate_update or need_obs_update:
             p_traj = self.get_updated_traj_param(self.arc_trajectory)
-            p_capsule = self.get_capsule_param()
-            p_full = np.concatenate([p_traj, p_capsule])
+            p_capsule = self.get_capsule_param(include_gate=False)
+            p_gate = self.get_gate_param()
+            p_full = np.concatenate([p_traj, p_capsule, p_gate])
             for i in range(self.N):
                 self.acados_ocp_solver.set(i, "p", p_full)
-            self.capsule_list = self._gen_pillar_capsule() + self._gen_gate_capsule()# for now only for visualization
+            self.capsule_list = self._gen_pillar_capsule() # for now only for visualization
         
         # ## replan trajectory:
         # if self.pos_change_detect(obs):
@@ -877,7 +897,6 @@ class MPCC(FresssackController):
             pass
 
         return cmd
-        return np.zeros_like(cmd)
 
     def step_callback(
         self,
