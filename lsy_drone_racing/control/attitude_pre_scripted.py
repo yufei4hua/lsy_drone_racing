@@ -19,12 +19,15 @@ from scipy.interpolate import CubicSpline
 from scipy.spatial.transform import Rotation as R
 
 from lsy_drone_racing.control import Controller
+from lsy_drone_racing.control.fresssack_controller import FresssackController
+from lsy_drone_racing.tools.ext_tools import TrajectoryTool
+from lsy_drone_racing.utils.utils import draw_line
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
 
-class AttitudeController(Controller):
+class AttitudeController(FresssackController):
     """Example of a controller using the collective thrust and attitude interface."""
 
     def __init__(self, obs: dict[str, NDArray[np.floating]], info: dict, config: dict, env=None):
@@ -37,6 +40,7 @@ class AttitudeController(Controller):
             config: The configuration of the environment.
         """
         super().__init__(obs, info, config)
+        self.env = env
         self.freq = config.env.freq
         self.drone_mass = MASS
         self.kp = np.array([0.4, 0.4, 1.25])
@@ -47,7 +51,7 @@ class AttitudeController(Controller):
         self.g = 9.81
         self._tick = 0
 
-        # Same waypoints as in the trajectory controller. Determined by trial and error.
+        # Demo waypoints
         waypoints = np.array(
             [
                 [1.0, 1.5, 0.05],
@@ -55,25 +59,32 @@ class AttitudeController(Controller):
                 [0.55, -0.3, 0.5],
                 [0.2, -1.3, 0.65],
                 [1.1, -0.85, 1.1],
-                [0.2, 0.5, 0.65],
-                [0.0, 1.2, 0.525],
-                [0.0, 1.2, 1.1],
+                [0.2, 0.5, 0.55],
+                [0.0, 0.9, 0.45],
+                [0.0, 1.2, 0.45],
+                [0.0, 1.2, 0.55],
+                [0.0, 1.0, 0.6],
+                [0.0, 0.7, 0.75],
                 [-0.5, 0.0, 1.1],
                 [-0.5, -0.5, 1.1],
             ]
         )
-        # Scale trajectory between 0 and 1
-        ts = np.linspace(0, 1, np.shape(waypoints)[0])
-        cs_x = CubicSpline(ts, waypoints[:, 0])
-        cs_y = CubicSpline(ts, waypoints[:, 1])
-        cs_z = CubicSpline(ts, waypoints[:, 2])
+        self.waypoints = waypoints
+        t = np.linspace(0,10,len(waypoints))
+        trajectory = CubicSpline(t, waypoints)
 
-        des_completion_time = 15
-        ts = np.linspace(0, 1, int(self.freq * des_completion_time))
+        # # pre-planned trajectory
+        # t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/param_a_5_sec_offsets.csv")     
+        # trajectory = CubicSpline(t, pos)
+        # trajectory reparameterization
+        self.traj_tool = TrajectoryTool()
+        trajectory = self.traj_tool.extend_trajectory(trajectory)
+        self.arc_trajectory = self.traj_tool.arclength_reparameterize(trajectory)
+        self.theta = 0.0 # traveled distance
+        self.prev_pos = obs['pos']
 
-        self.x_des = cs_x(ts)
-        self.y_des = cs_y(ts)
-        self.z_des = cs_z(ts)
+        self.gates_theta, _ = self.traj_tool.find_gate_waypoint(self.arc_trajectory, obs['gates_pos'])
+
         self._finished = False
 
     def compute_control(
@@ -89,12 +100,26 @@ class AttitudeController(Controller):
         Returns:
             The collective thrust and orientation [t_des, r_des, p_des, y_des] as a numpy array.
         """
-        i = min(self._tick, len(self.x_des) - 1)
-        if i == len(self.x_des) - 1:  # Maximum duration reached
-            self._finished = True
+        # i = min(self._tick, len(self.x_des) - 1)
+        # if i == len(self.x_des) - 1:  # Maximum duration reached
+        #     self._finished = True
 
-        des_pos = np.array([self.x_des[i], self.y_des[i], self.z_des[i]])
+        try:
+            draw_line(self.env, self.arc_trajectory(self.arc_trajectory.x), rgba=np.array([1.0, 0.0, 0.0, 0.2]))
+            # draw_line(self.env, self.waypoints, rgba=np.array([1.0, 1.0, 1.0, 0.2]))
+        except:
+            pass
+
+        # fetch waypoint from trajectory
+        curr_theta, curr_wp = self.traj_tool.find_nearest_waypoint(self.arc_trajectory, obs['pos'], self.gates_theta[obs['target_gate']])
+        self.theta += np.linalg.norm(obs['pos'] - self.prev_pos) # update theta
+        alpha = 0.95
+        self.theta = (1-alpha)*self.theta + alpha*curr_theta
+        self.prev_pos = obs['pos']
+        des_pos = self.arc_trajectory(self.theta+0.25)
         des_vel = np.zeros(3)
+        # vel = self.arc_trajectory.derivative(1)(self.theta+0.15)
+        # des_vel = 0.5 * vel/np.linalg.norm(vel)
         des_yaw = 0.0
 
         # Calculate the deviations from the desired trajectory

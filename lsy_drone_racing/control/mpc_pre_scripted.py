@@ -240,7 +240,7 @@ def create_ocp_solver(
 class PrecriptedMPController(FresssackController):
     """Example of a MPC using the collective thrust and attitude interface."""
 
-    def __init__(self, obs: dict[str, NDArray[np.floating]], info: dict, config: dict):
+    def __init__(self, obs: dict[str, NDArray[np.floating]], info: dict, config: dict, env=None):
         """Initialize the attitude controller.
 
         Args:

@@ -499,8 +499,8 @@ class MPCC(EasyController):
         info: dict,
     ) -> bool:
         """Increment the tick counter."""
-        self.step_update(obs = obs)
-        self.update_next_gate()
+        # self.step_update(obs = obs)
+        # self.update_next_gate()
 
         return self.finished
 
