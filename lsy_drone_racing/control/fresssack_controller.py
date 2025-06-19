@@ -1,10 +1,11 @@
 from __future__ import annotations
+from sre_constants import CATEGORY_LINEBREAK
 from typing import TYPE_CHECKING
 from typing import List, Dict, Tuple, Set, Union, Callable, Optional
 import pandas as pd
 import os
 import atexit
-# from pinocchio import YAxis
+import copy
 
 LOCAL_MODE = False
 try:
@@ -21,11 +22,12 @@ try:
     from rclpy.node import Node
     from rclpy.publisher import Publisher
     from rclpy.publisher import MsgType
-    from geometry_msgs.msg import PoseStamped, TransformStamped
+    from geometry_msgs.msg import Quaternion, PoseStamped, TransformStamped
     from nav_msgs.msg import Path
     from tf2_ros import TransformBroadcaster
     from transformations import quaternion_from_euler, euler_from_quaternion
-    from visualization_msgs.msg import Marker
+    from visualization_msgs.msg import Marker, MarkerArray
+    from std_msgs.msg import ColorRGBA, Float32MultiArray
     ROS_AVAILABLE = True
 except:
     ROS_AVAILABLE = False
@@ -130,7 +132,6 @@ class PathTx(ControllerROSTx):
             msg.poses.append(pose_msg)
         return msg
     
-
 class PoseTx(ControllerROSTx):
     def __init__(self,
                  node_name : str,
@@ -159,6 +160,127 @@ class PoseTx(ControllerROSTx):
 
         return msg
 
+class MultiArrayTx(Node):
+
+    def __init__(self, node_name="cost_debug_tx", queue_size=10, keys : List[np.floating] = [], topic_prefix : str = '' ):
+        super().__init__(node_name)
+        self.pubs : Dict[str, Publisher] = {}
+        
+        for key in keys:
+            self.pubs[key] = self.create_publisher(Float32MultiArray, topic_prefix + "/" + key, queue_size)
+
+        # self.publishers = {
+        #     'cost_l': self.create_publisher(Float32MultiArray, '/cost_debug/cost_l', queue_size),
+        #     'e_l_cost': self.create_publisher(Float32MultiArray, '/cost_debug/e_l_cost', queue_size),
+        #     'C_l': self.create_publisher(Float32MultiArray, '/cost_debug/C_l', queue_size),
+        #     'cost_c': self.create_publisher(Float32MultiArray, '/cost_debug/cost_c', queue_size),
+        #     'e_c_cost': self.create_publisher(Float32MultiArray, '/cost_debug/e_c_cost', queue_size),
+        #     'C_c': self.create_publisher(Float32MultiArray, '/cost_debug/C_c', queue_size),
+        #     'ang_cost': self.create_publisher(Float32MultiArray, '/cost_debug/ang_cost', queue_size),
+        #     'ctrl_cost': self.create_publisher(Float32MultiArray, '/cost_debug/ctrl_cost', queue_size),
+        #     'cost_obs': self.create_publisher(Float32MultiArray, '/cost_debug/cost_obs', queue_size),
+        #     'miu_cost': self.create_publisher(Float32MultiArray, '/cost_debug/miu_cost', queue_size),
+        #     'total': self.create_publisher(Float32MultiArray, '/cost_debug/total', queue_size)
+        # }
+
+    def publish(self, raw_data: dict[str, List[np.floating]]):
+        for key, value in raw_data.items():
+            if key in self.pubs.keys():
+                msg = Float32MultiArray()
+                for i in value:
+                    msg.data.append(float(i))
+                self.pubs[key].publish(msg)
+
+
+
+class CapsuleMarkerTx(ControllerROSTx):
+    name: str
+    frame_id : str
+    def __init__(self,
+                 node_name : str,
+                 topic_name : str,
+                 queue_size : np.integer,
+                 frame_id : str = None
+                 ):
+        super().__init__(node_name, MarkerArray, topic_name, queue_size)
+        self.name = node_name
+        self.frame_id = frame_id if frame_id is not None else 'map'
+
+    def process_data(self, raw_data : Dict[str, NDArray])-> MarkerArray:
+        
+        stamp = self.get_clock().now().to_msg()
+        a = raw_data.get('a', np.array([0,0,0]))
+        b = raw_data.get('b', np.array([0,0,1]))
+        r = raw_data.get('r', 0.2)
+        rgba = raw_data.get('rgba', [1.0,0.0,0.0,1.0])
+        base_idx = raw_data.get('base_idx', 0)
+        array = MarkerArray()
+
+        q = TransformTool.vector_to_quaternion_z_to_v(b-a)
+
+        # cylinder body
+        body = Marker()
+        body.header.frame_id = self.frame_id
+        body.header.stamp = stamp
+        body.ns = self.name
+        body.action = Marker.ADD
+        body.id = base_idx
+        body.type = Marker.CYLINDER
+        pos = (a + b) / 2.0
+        body.pose.position.x = float(pos[0])
+        body.pose.position.y = float(pos[1])
+        body.pose.position.z = float(pos[2])
+        body.pose.orientation = Quaternion( 
+                                x=float(q[0]),
+                                y=float(q[1]),
+                                z=float(q[2]),
+                                w=float(q[3])
+                                )
+        body.scale.x, body.scale.y, body.scale.z = 2 * float(r), 2 * float(r), float(np.linalg.norm(b-a))
+        body.color.r = float(rgba[0])
+        body.color.g = float(rgba[1])
+        body.color.b = float(rgba[2])
+        body.color.a = float(rgba[3])
+        array.markers.append(body)
+
+        # cap1
+        cap_1 = Marker()
+        cap_1.header.frame_id = self.frame_id
+        cap_1.header.stamp = stamp
+        cap_1.ns = self.name
+        cap_1.action = Marker.ADD
+        cap_1.id = base_idx + 1
+        cap_1.type = Marker.SPHERE
+        cap_1.pose.position.x = float(a[0])
+        cap_1.pose.position.y = float(a[1])
+        cap_1.pose.position.z = float(a[2])
+        cap_1.scale.x, cap_1.scale.y, cap_1.scale.z = 2 * float(r), 2 * float(r),2 * float(r)
+        cap_1.color.r = float(rgba[0])
+        cap_1.color.g = float(rgba[1])
+        cap_1.color.b = float(rgba[2])
+        cap_1.color.a = float(rgba[3])
+        array.markers.append(cap_1)
+
+        # cap2
+        cap_2 = Marker()
+        cap_2.header.frame_id = self.frame_id
+        cap_2.header.stamp = stamp
+        cap_2.ns = self.name
+        cap_2.action = Marker.ADD
+        cap_2.id = base_idx + 2
+        cap_2.type = Marker.SPHERE
+        cap_2.pose.position.x = float(b[0])
+        cap_2.pose.position.y = float(b[1])
+        cap_2.pose.position.z = float(b[2])
+        cap_2.scale.x, cap_2.scale.y, cap_2.scale.z = 2 * float(r), 2 * float(r),2 * float(r)
+        cap_2.color.r = float(rgba[0])
+        cap_2.color.g = float(rgba[1])
+        cap_2.color.b = float(rgba[2])
+        cap_2.color.a = float(rgba[3])
+        array.markers.append(cap_2)
+
+        return array
+
 class MeshMarkerTx(ControllerROSTx):
     name : str
     mesh_url : List[str]
@@ -179,14 +301,17 @@ class MeshMarkerTx(ControllerROSTx):
 
     def process_data(self, raw_data : Dict[str, NDArray])-> MsgType:
         idx = 0
+        base_idx = 0
         if raw_data is not None:
             idx = raw_data.get('idx', 0)
+            base_idx = raw_data.get('base_idx', 0)
+        
         marker = Marker()
         marker.header.frame_id = self.frame_id
         marker.header.stamp = self.get_clock().now().to_msg()
 
         marker.ns = self.name
-        marker.id = 0
+        marker.id = base_idx
         marker.type = Marker.MESH_RESOURCE
         marker.action = Marker.ADD
 
@@ -204,8 +329,29 @@ class MeshMarkerTx(ControllerROSTx):
 
         return marker
 
+class MarkerArrayTx(ControllerROSTx):
+    name : str
+    marker_txs : List[ControllerROSTx]
+    def __init__(self,
+                 node_name : str,
+                 topic_name : str,
+                 queue_size : np.integer
+                 ):
+        super().__init__(node_name, MarkerArray, topic_name, queue_size)
+        self.name = node_name
+    def process_data(self, raw_data : Dict[str, Marker])-> MsgType:
+        msg = MarkerArray()
+        marker_list : List[Marker] = raw_data.get('markers', [])
+        for marker in marker_list:
+            stamp = rclpy.time.Time().to_msg()
+            marker.header.stamp = stamp
+            msg.markers.append(marker)
+        return msg
+            
+            
 
 
+       
 class FresssackController(Controller):
     """Controller base class with predifined functions for further development! """
     pos : NDArray[np.floating]
@@ -309,6 +455,12 @@ class FresssackController(Controller):
                 frame_id = 'map',
                 queue_size = 1
             )
+            # self.test_capsule = CapsuleMarkerTx(
+            #     node_name = 'capsule_test_tx',
+            #     topic_name = 'capsule_test',
+            #     queue_size = 1,
+            #     frame_id = 'map'
+            # )
         else:
             self.ros_tx = False
         
@@ -336,9 +488,9 @@ class FresssackController(Controller):
         
         self.gates : List[Gate] = []
         self.gates_visited : List[bool] = None
-        gates_pos_init  = obs['gates_pos']
+        self.gates_pos_init  = obs['gates_pos'] # save initial gates positions
         gates_rot_init  = obs['gates_quat']
-        gates_num = gates_pos_init.shape[0]
+        gates_num = self.gates_pos_init.shape[0]
 
 
         if np.isscalar(gate_inner_size):
@@ -384,7 +536,7 @@ class FresssackController(Controller):
         self.gate_vel_limit = vel_limit
 
         for i in range(gates_num):
-            self.gates.append(Gate(pos = gates_pos_init[i],
+            self.gates.append(Gate(pos = self.gates_pos_init[i],
                                 quat = gates_rot_init[i],
                                 inner_width = self.gate_inner_size[i],
                                 inner_height = self.gate_inner_size[i],
@@ -589,6 +741,14 @@ class FresssackController(Controller):
             self.drone_marker_tx.publish(None)
         if self.need_ros_tx(slow = True):
             self.ground_marker_tx.publish(None)
+            # self.test_capsule.publish(
+            #     {
+            #         'a' : np.array([0,0,0]),
+            #         'b' : np.array([0,0,0.5]),
+            #         'r' : 0.2,
+            #         'rgba' : [1,0,0,1]
+            #     }
+            # )
         self._tick += 1
 
     
@@ -637,7 +797,7 @@ class FresssackController(Controller):
         dot_1 = np.dot(v_1, self.gates[self.next_gate].norm_vec)
         if(dot_0 * dot_1 < 0):
             self.next_gate = self.next_gate + 1 if self.next_gate < len(self.gates) - 1 else self.next_gate
-            print('Next Gate:' + str(self.next_gate))
+            # print('Next Gate:' + str(self.next_gate))
             return True
         else:
             return False
@@ -797,12 +957,14 @@ class FresssackController(Controller):
             capsule_list.append((a, b, r))
         return capsule_list
     
-    def get_capsule_param(self) -> NDArray[np.floating]:
+    def get_capsule_param(self, include_gate=True) -> NDArray[np.floating]:
         """put all capsules into a flat array to write to model.p
         Returns:
             NDArray of capsules parameters like [a, b, r, a, b, r, ...]
         """
-        capsule_list = self._gen_gate_capsule() + self._gen_pillar_capsule()
+        capsule_list = self._gen_pillar_capsule()
+        if include_gate:
+            capsule_list = capsule_list + self._gen_gate_capsule()
 
         capsule_params = []
         for a, b, r in capsule_list:
@@ -811,3 +973,50 @@ class FresssackController(Controller):
             capsule_params.append(float(r))
 
         return np.array(capsule_params, dtype=np.float32)
+    
+    def get_gate_param(self):
+        gate_param_list = [np.concatenate([gate.pos, gate.norm_vec]) for gate in self.gates]
+        return np.concatenate(gate_param_list)
+    
+    # below is for mpcc traj translation
+    def _gen_pillar_cylinder(self):
+        """init pillar cylinder from self.obstacles
+        Returns:
+            List of horizontal coordinates
+        """
+        cylinder_list = []
+        for obst in self.obstacles:
+            x, y = obst.pos.copy()[:2]
+            r = obst.safe_radius
+            cylinder_list.append((x, y, r))
+        return cylinder_list
+    
+    def get_cylinder_param(self) -> NDArray[np.floating]:
+        """put all cylinders into a flat array to write to model.p
+        Returns:
+            NDArray of cylinders parameters like [x, y, r, x, y, r, ...]
+        """
+        cylinder_list = self._gen_pillar_cylinder()
+
+        cylinder_params = []
+        for x, y, r in cylinder_list:
+            cylinder_params.append(x)
+            cylinder_params.append(y)
+            cylinder_params.append(r)
+        return np.array(cylinder_params, dtype=np.float32)
+    
+    def get_curr_gate_offset(self, curr_gate):
+        """return current gate position change
+        run detect pos change outside in control loop
+        Returns:
+            NDArray(3): position change of current target gate
+        """
+        return self.gates[curr_gate].pos - self.gates_pos_init[curr_gate]
+
+    def hex2rgba(self, hex="#FFFFFFFF"):
+        hex = hex.lstrip('#')
+        r, g, b, a = int(hex[0:2], 16), int(hex[2:4], 16), int(hex[4:6], 16), int(hex[6:8], 16)
+        rgba = np.array([r/255, g/255, b/255, a/255])
+        return rgba
+    
+    

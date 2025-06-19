@@ -27,6 +27,7 @@ except ImportError:
     plt = None
 
 from lsy_drone_racing.control import Controller
+from lsy_drone_racing.utils.utils import draw_line
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -35,7 +36,7 @@ if TYPE_CHECKING:
 class EasyController(FresssackController):
     """Trajectory controller following a pre-defined trajectory."""
 
-    def __init__(self, obs: dict[str, NDArray[np.floating]], info: dict, config: dict, ros_tx_freq : np.floating = None):
+    def __init__(self, obs: dict[str, NDArray[np.floating]], info: dict, config: dict, env = None, ros_tx_freq : np.floating = None):
         """Initialization of the controller.
 
         Args:
@@ -45,7 +46,7 @@ class EasyController(FresssackController):
             config: The race configuration. See the config files for details. Contains additional
                 information such as disturbance configurations, randomizations, etc.
         """
-        super().__init__(obs, info, config, ros_tx_freq = ros_tx_freq)
+        super().__init__(obs, info, config, ros_tx_freq = 50.0)
         # Same waypoints as in the trajectory controller. Determined by trial and error.
         # waypoints = np.array(
         #     [
@@ -62,6 +63,7 @@ class EasyController(FresssackController):
         #     ]
         # )
 
+        self.env = env
         self.t_total = 12
         self._tick = 0
         self._freq = config.env.freq
@@ -263,6 +265,14 @@ class EasyController(FresssackController):
             # self.visualize_traj(self.gates_pos, self.gates_norm, obst_positions=obs['obstacles_pos'], trajectory=self.trajectory, drone_pos=obs['pos'])
         if tau == self.t_total:  # Maximum duration reached
             self._finished = True
+
+        ## visualization
+        # test true theta and guess theta
+        try:
+            draw_line(self.env, self.trajectory(self.trajectory.x), rgba=np.array([1.0, 1.0, 1.0, 0.2]))
+        except:
+            pass
+
         return np.concatenate((target_pos, np.zeros(10)), dtype=np.float32)
 
     def get_trajectory_function(self):

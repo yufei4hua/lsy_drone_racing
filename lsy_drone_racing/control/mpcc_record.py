@@ -24,7 +24,7 @@ from sympy import true
 from torch import has_spectral
 from traitlets import TraitError
 
-from lsy_drone_racing.control.fresssack_controller import FresssackController
+from lsy_drone_racing.control.fresssack_controller import  *
 from lsy_drone_racing.control.easy_controller import EasyController
 from lsy_drone_racing.control import Controller
 from lsy_drone_racing.tools.ext_tools import TrajectoryTool
@@ -33,7 +33,20 @@ from lsy_drone_racing.utils.utils import draw_line
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
+try:
+    import rclpy
+    from rclpy.node import Node
+    from rclpy.publisher import Publisher
+    from rclpy.publisher import MsgType
+    from geometry_msgs.msg import PoseStamped, TransformStamped
+    from nav_msgs.msg import Path
+    from tf2_ros import TransformBroadcaster
+    from visualization_msgs.msg import Marker, MarkerArray
 
+    from transformations import quaternion_from_euler, euler_from_quaternion
+    ROS_AVAILABLE = True
+except:
+    ROS_AVAILABLE = False
 
 class MPCC(EasyController):
     """Implementation of MPCC using the collective thrust and attitude interface."""
@@ -102,6 +115,72 @@ class MPCC(EasyController):
         self.config = config
         self.finished = False
 
+
+    def init_ros_tx(self):
+        if ROS_AVAILABLE and self.ros_tx:
+            self.mpcc_traj_tx = PathTx(
+                node_name = 'mpcc_path_tx',
+                topic_name = 'mpcc_traj',
+                queue_size = 10
+            )
+            self.path_tx = PathTx(
+                node_name = 'global_path_tx',
+                topic_name = 'global_path',
+                queue_size = 10
+            )
+            self.gate_tf_txs = [
+                TFTx(node_name = 'gate_' + str(i) + '_TF_tx', topic_name = 'gate_' + str(i))
+                for i in range(len(self.gates))
+            ]
+            
+            self.obstacle_tf_txs = [
+                TFTx(node_name = 'obstacle_' + str(i) + '_TF_tx', topic_name = 'obstacle_' + str(i))
+                for i in range(len(self.obstacles))
+            ]
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+
+            gate_mesh_file = os.path.join(current_dir, '..', 'ros', 'rviz','meshes', 'gate.dae')
+            gate_unobserved_mesh_file = os.path.join(current_dir, '..', 'ros', 'rviz','meshes', 'gate_not_sure.dae')
+            gate_passed_mesh_file = os.path.join(current_dir, '..', 'ros', 'rviz','meshes', 'gate_passed.dae')
+            self.gate_marker_txs = [
+                    MeshMarkerTx(
+                    node_name = 'gate_' + str(i) + '_marker_tx',
+                    topic_name = 'gate_' + str(i) + '_marker',
+                    mesh_path = [os.path.abspath(gate_unobserved_mesh_file),
+                                  os.path.abspath(gate_mesh_file),
+                                  os.path.abspath(gate_passed_mesh_file)],
+                    frame_id = 'gate_' + str(i),
+                    queue_size = 1
+                )
+                for i in range(len(self.gates))
+            ]
+
+            self.gate_marker_array_tx = MarkerArrayTx(
+                node_name = 'gate_marker_array_tx',
+                topic_name = 'gate_marker_array',
+                queue_size = 5
+            )
+            
+            obstacle_mesh_file = os.path.join(current_dir, '..', 'ros', 'rviz','meshes', 'obstacle.dae')
+            obstacle_unobserved_mesh_file = os.path.join(current_dir, '..', 'ros', 'rviz','meshes', 'obstacle_not_sure.dae')
+            self.obstacle_marker_txs = [
+                    MeshMarkerTx(
+                    node_name = 'obstacle_' + str(i) + '_marker_tx',
+                    topic_name = 'obstacle_' + str(i) + '_marker',
+                    mesh_path = [os.path.abspath(obstacle_unobserved_mesh_file),
+                                 os.path.abspath(obstacle_mesh_file)],
+                    frame_id = 'obstacle_' + str(i),
+                    queue_size = 1
+                )
+                for i in range(len(self.obstacles))
+            ]
+            self.obstacle_marker_array_tx = MarkerArrayTx(
+                node_name = 'obstacle_marker_array_tx',
+                topic_name = 'obstacle_marker_array',
+                queue_size = 5
+            )
+
+           
     def export_quadrotor_ode_model(self) -> AcadosModel:
         """Symbolic Quadrotor Model."""
         # Define name of solver to be used in script
@@ -315,7 +394,7 @@ class MPCC(EasyController):
         
         self.Q_w = 1 * DM(np.eye(3))
         self.R_df = DM(np.diag([1,0.5,0.5,0.5]))
-        self.miu = 8
+        self.miu = 0.5
         # param A: works and works well
 
         
@@ -449,14 +528,11 @@ class MPCC(EasyController):
         self.acados_ocp_solver.set(0, "lbx", xcurrent)
         self.acados_ocp_solver.set(0, "ubx", xcurrent)
 
-
-        # test:
-        if self.last_theta >= 8.55:
-            self.finished = True
-
         if self.acados_ocp_solver.solve() == 4:
             pass
 
+        x_result = [self.acados_ocp_solver.get(i, "x") for i in range(self.N + 1)]
+        
         ## update initial guess
         self.x_guess = [self.acados_ocp_solver.get(i, "x") for i in range(self.N + 1)]
         self.u_guess = [self.acados_ocp_solver.get(i, "u") for i in range(self.N)]
@@ -476,7 +552,18 @@ class MPCC(EasyController):
             )
         )
         ## visualization
-        # test true theta and guess theta
+        
+
+        pos_traj = np.array([x_result[i][:3] for i in range(self.N+1)])
+        if self.need_ros_tx():
+            self.mpcc_traj_tx.publish(
+                raw_data = {
+                    'traj' : pos_traj,
+                    'frame_id' : 'map'
+                }
+            )
+        if self.need_ros_tx(slow=True):
+            pass
         try:
             draw_line(self.env, self.arc_trajectory(self.arc_trajectory.x), rgba=np.array([1.0, 1.0, 1.0, 0.2]))
             draw_line(self.env, np.stack([self.arc_trajectory(self.last_theta), obs["pos"]]), rgba=np.array([0.0, 0.0, 1.0, 1.0]))
