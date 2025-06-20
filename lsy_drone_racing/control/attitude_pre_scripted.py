@@ -113,7 +113,7 @@ class AttitudeController(FresssackController):
         # fetch waypoint from trajectory
         curr_theta, curr_wp = self.traj_tool.find_nearest_waypoint(self.arc_trajectory, obs['pos'], self.gates_theta[obs['target_gate']])
         self.theta += np.linalg.norm(obs['pos'] - self.prev_pos) # update theta
-        alpha = 0.95
+        alpha = 1.0
         self.theta = (1-alpha)*self.theta + alpha*curr_theta
         self.prev_pos = obs['pos']
         des_pos = self.arc_trajectory(self.theta+0.25)

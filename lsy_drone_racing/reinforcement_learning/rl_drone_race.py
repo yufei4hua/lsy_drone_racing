@@ -99,6 +99,7 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         self.obs_env = None
         self.obs_rl = None
 
+    # region step
     def step(self, action):
         # if IMMITATION_LEARNING: # test
         #     action = self.teacher_controller.compute_control(self.obs_env, None) - self.act_bias
@@ -114,6 +115,7 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
             reward -= self.k_crash
         return self.obs_rl, reward, bool(terminated[0, 0]), bool(truncated[0, 0]), info
 
+    # region obs
     def _obs_to_state(self, obs: dict[str, NDArray], action: Array) -> NDArray:
         # define rl input states: [pos(3), vel(3), rot_mat(9), rpy_rates(3), rel_pos_gate(4*3), rel_xy_obst(2), prev_act(4)] (dim=36)
         pos = obs["pos"].squeeze()
@@ -221,6 +223,7 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
 
         return self.obs(), self.info()
 
+    # region reset
     def reset(self, seed=None, options=None):
         # parameters setting # 放到这儿好调参
         self.k_obst = 0.2
@@ -246,6 +249,7 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
             self.teacher_controller = AttitudeController(self.obs_env, info, config, self)
         return self.obs_rl, info
     
+    # region reward
     def _reward(self, obs, obs_rl, act):
         curr_gate = obs['target_gate']
         gate_pos = obs['gates_pos'][curr_gate]
@@ -290,7 +294,7 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
 
         return r
     
-# for curriculum learning
+# region curriculum learning
 class RLDroneHoverEnv(RLDroneRaceEnv):
     def __init__(
         self,

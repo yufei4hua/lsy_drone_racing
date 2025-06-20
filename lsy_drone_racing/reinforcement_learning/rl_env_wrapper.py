@@ -22,71 +22,70 @@ IMMITATION_LEARNING = True
 if IMMITATION_LEARNING:
     from pathlib import Path
     from lsy_drone_racing.utils import load_config
-    from lsy_drone_racing.control.mpcc import MPCC
+    # from lsy_drone_racing.control.mpcc import MPCC
+    from lsy_drone_racing.control.attitude_pre_scripted import AttitudeController
 
 class RLDroneRacingWrapper(gymnasium.Wrapper):
     def __init__(self, env: VecDroneRaceEnv):
         super().__init__(env)
         # create action & observation spaces
         self.num_envs = env.num_envs
-        self.single_action_space = build_action_space(env.single_action_space.dtype)
         self.action_space = env.action_space
         state_dim = 36
         lim = np.full(state_dim, np.inf, dtype=np.float32) # set to infinite for now
         self.single_observation_space = spaces.Box(-lim, lim, dtype=np.float32)
         self.observation_space = batch_space(self.single_observation_space, self.num_envs)
         # initialize internal state saving variables
+        self.obs_env = None
         self._d_safe = 1.0
         self._act_bias = np.array([MASS * GRAVITY, 0.0, 0.0, 0.0], dtype=np.float32)
         self._prev_act = np.repeat(self._act_bias[None, :], self.num_envs, axis=0)
         self._prev_gate = np.zeros(self.num_envs, dtype=int)
-        # region RL parameters
-        self.k_living = 0.4
-        self.k_obst = 0.4
+        # region Param
+        """REWARD PARAMETERS"""
+        self.k_living = 0.5
+        self.k_obst = 0.2
         self.k_obst_d = 0.5
-        self.k_gates = 1.0
+        self.k_gates = 2.0
         self.k_center = 0.3
-        self.k_vel = -0.4
+        self.k_vel = +0.04
         self.k_act = 0.01
         self.k_act_d = 0.001
         self.k_yaw = 0.1
-        self.k_crash = 20
-        self.k_success = 30
+        self.k_crash = 25
+        self.k_success = 40
+        self.k_imit = 0.4
 
+    # region Reset
     def reset(self, **kwargs) -> Tuple[np.ndarray, Dict]:
-        obs_env, info = self.env.reset(**kwargs)           # dict → array(num_envs, ...)
-        state = self._obs_to_state(obs_env,
+        self.obs_env, info = self.env.reset(**kwargs)           # dict → array(num_envs, ...)
+        state = self._obs_to_state(self.obs_env,
                                    np.repeat(self._act_bias[None, :], self.num_envs, axis=0))
+        self._prev_drone_pos = self.obs_env['pos']
+        self._prev_obst_xy = self.obs_env['obstacles_pos'][0][:2]
         self._prev_act = np.repeat(self._act_bias[None, :], self.num_envs, axis=0)
         self._prev_gate = np.zeros(self.num_envs, dtype=int)
+        self._prev_gate_pos = self.obs_env['gates_pos'][0]
+        if IMMITATION_LEARNING:
+            config = load_config(Path(__file__).parents[2] / "config/level0.toml")
+            self.teacher_controller = AttitudeController(self.obs_env, info, config, self)
+        self.traj_record = np.array([self.obs_env['pos']]) # debug
         return state, info
 
-    def step(self, action: Array) -> tuple[dict, float, bool, bool, dict]:
-        """Step the environment.
-
-        Args:
-            action: Action for the drone.
-
-        Returns:
-            Observation, reward, terminated, truncated, and info.
-        """
-        action_exec = action + self.act_bias # always apply RL output on bias
-        obs, _, terminated, truncated, info = self.env.step(action_exec)
-        # obs = {k: v[0, 0] for k, v in obs.items()}
-        obs_rl = self.obs_to_state(obs, action)
-        reward = self.reward(obs, action)
-        reward += -self.k_crash * int((terminated or truncated) and int(np.sum(obs['gates_visited'])) < self.num_gates)
-        # info = {k: v[0, 0] for k, v in info.items()}
-        return obs_rl, reward, terminated, truncated, info
+    # region Step
     def step(self, action: np.ndarray):
         action_exec = action + self._act_bias
-        obs_env, _, terminated, truncated, info = self.env.step(action_exec)
-        state = self._obs_to_state(obs_env, action)
-        reward = self._reward(obs_env, action)
+        self.obs_env, _, terminated, truncated, info = self.env.step(action_exec)
+        state = self._obs_to_state(self.obs_env, action)
+        reward = self._reward(self.obs_env, state, action)
         done = terminated | truncated
 
-        self._prev_act = action
-        self._prev_gate = obs_env["target_gate"].astype(int)
+        self.traj_record = np.vstack([self.traj_record, self.obs_env['pos'][0, :]]) # debug
+        try:
+            draw_line(self, self.traj_record[0:-1:5], rgba=np.array([0.0, 1.0, 0.0, 0.2]))
+        except:
+            pass
+
         return state, reward, done, truncated, info
 
     # region OBS
@@ -124,10 +123,10 @@ class RLDroneRacingWrapper(gymnasium.Wrapper):
             [ half_w, 0.0, -half_h],
         ])
         gate_corners = (gate_rot_mat @ corners_local.T).transpose(0, 2, 1) + gate_pos[:, None, :]
-        draw_line(self, np.stack([gate_corners[0, 0], pos]), rgba=np.array([1.0, 1.0, 1.0, 0.2]))
-        draw_line(self, np.stack([gate_corners[0, 1], pos]), rgba=np.array([1.0, 1.0, 1.0, 0.2]))
-        draw_line(self, np.stack([gate_corners[0, 2], pos]), rgba=np.array([1.0, 1.0, 1.0, 0.2]))
-        draw_line(self, np.stack([gate_corners[0, 3], pos]), rgba=np.array([1.0, 1.0, 1.0, 0.2]))
+        draw_line(self, np.stack([gate_corners[0, 0], pos[0]]), rgba=np.array([1.0, 1.0, 1.0, 0.2]))
+        draw_line(self, np.stack([gate_corners[0, 1], pos[0]]), rgba=np.array([1.0, 1.0, 1.0, 0.2]))
+        draw_line(self, np.stack([gate_corners[0, 2], pos[0]]), rgba=np.array([1.0, 1.0, 1.0, 0.2]))
+        draw_line(self, np.stack([gate_corners[0, 3], pos[0]]), rgba=np.array([1.0, 1.0, 1.0, 0.2]))
         rel_pos_gate = gate_corners - pos[:, None, :]   # (N, 4, 3)
 
         obst_rel_xy = obs["obstacles_pos"][:, :, :2] - pos[:, None, :2]       # (N, n_obst, 2)
@@ -154,8 +153,8 @@ class RLDroneRacingWrapper(gymnasium.Wrapper):
         ], axis=-1).astype(np.float32)  # => (N, 36)
 
         # save to self just in case
-        self.rel_pos_gate      = rel_pos_gate            # (N, 4, 3)
-        self.rel_xy_obst_gaus  = rel_xy_obst_gaus        # (N, 2)
+        self.rel_pos_gate = rel_pos_gate     # (N, 4, 3)
+        self.rel_xy_obst  = rel_xy_obst      # (N, 2)
 
         return state
     
@@ -173,39 +172,38 @@ class RLDroneRacingWrapper(gymnasium.Wrapper):
         N = act.shape[0]
         rewards = np.full(N, self.k_living, dtype=float)
         # data preparation
-        curr_gate   = obs["target_gate"].astype(int)          # (N,)
-        drone_pos   = obs["pos"]                              # (N, 3)
-        drone_vel   = obs["vel"]                              # (N, 3)
-        gates_pos   = obs["gates_pos"]                        # (N, n_gates, 3)
-        gates_quat  = obs["gates_quat"]                       # (N, n_gates, 4)
-        rel_xy_obst = obs_rl[:, -6:-4]                        # (N, 2)
-        obst_xy     = self.rel_xy_obst_gaus + drone_pos[:, :2]  # (N, 2)
-        gate_pos = gates_pos[np.arange(N), curr_gate]         # (N, 3)
-        gate_quat = gates_quat[np.arange(N), curr_gate]       # (N, 4)
-        gates_norm = R.from_quat(gate_quat).as_matrix()[:, :, 1]  # (N, 3)
-        rel_gate   = gate_pos - drone_pos                     # (N, 3)
+        curr_gate   = obs["target_gate"].astype(int)                # (N,)
+        drone_pos   = obs["pos"]                                    # (N, 3)
+        drone_vel   = obs["vel"]                                    # (N, 3)
+        gates_pos   = obs["gates_pos"]                              # (N, n_gates, 3)
+        gates_quat  = obs["gates_quat"]                             # (N, n_gates, 4)
+        rel_xy_obst_gaus = obs_rl[:, -6:-4]                         # (N, 2)
+        obst_xy     = self.rel_xy_obst + drone_pos[:, :2]           # (N, 2)
+        gate_pos = gates_pos[np.arange(N), curr_gate]               # (N, 3)
+        gate_quat = gates_quat[np.arange(N), curr_gate]             # (N, 4)
+        gates_norm = R.from_quat(gate_quat).as_matrix()[:, :, 1]    # (N, 3)
+        rel_gate   = gate_pos - drone_pos                           # (N, 3)
         # reward: success passing gates | handle gate switching
-        prev_gate_delta = (curr_gate != self._prev_gate)       # (N,) bool
-        rewards[prev_gate_delta] += self.k_success            # gate pass reward
-        self.prev_gate_pos[prev_gate_delta] = gate_pos[prev_gate_delta] # update changed gates position
+        prev_gate_delta = (curr_gate != self._prev_gate)   # (N,) bool
+        rewards[prev_gate_delta] += self.k_success         # gate pass reward
+        self._prev_gate_pos[prev_gate_delta] = gate_pos[prev_gate_delta] # update changed gates position
         # reward: obstacle distance P&D
-        r_obst   = -self.k_obst   * np.linalg.norm(rel_xy_obst, axis=1)
+        r_obst   = -self.k_obst * np.linalg.norm(rel_xy_obst_gaus, axis=1)
         dist_now   = np.linalg.norm(obst_xy - drone_pos[:, :2], axis=1)
-        dist_prev  = np.linalg.norm(self.prev_obst_xy - self.prev_drone_pos[:, :2], axis=1)
-        r_obst_d = -self.k_obst_d * np.linalg.norm(rel_xy_obst, axis=1) * (dist_prev - dist_now)
+        dist_prev  = np.linalg.norm(self._prev_obst_xy - self._prev_drone_pos[:, :2], axis=1)
+        r_obst_d = -self.k_obst_d * np.linalg.norm(rel_xy_obst_gaus, axis=1) * (dist_prev - dist_now)
         # reward: gates distance D
-        prev_gate_delta_pos = np.linalg.norm(self.prev_gate_pos - self.prev_drone_pos, axis=1)
+        prev_gate_delta_pos = np.linalg.norm(self._prev_gate_pos - self._prev_drone_pos, axis=1)
         curr_gate_delta_pos = np.linalg.norm(rel_gate, axis=1)
         r_gates = self.k_gates * (prev_gate_delta_pos - curr_gate_delta_pos)
         # reward: deviation from gate center line
         dot_rg = (rel_gate * gates_norm).sum(axis=1)
-        r_center = -self.k_center * np.linalg.norm(rel_gate - gates_norm * dot_rg[:, None], axis=1) \
-                / (np.linalg.norm(rel_gate, axis=1) + 1e-6)
+        r_center = -self.k_center * np.linalg.norm(rel_gate - gates_norm * dot_rg[:, None], axis=1) / (np.linalg.norm(rel_gate, axis=1) + 1)
         # reward: smooth action
         r_act = -self.k_act * np.linalg.norm(act, axis=1) \
-                -self.k_act_d * np.linalg.norm(act - self.prev_act, axis=1)
+                -self.k_act_d * np.linalg.norm(act - self._prev_act, axis=1)
         # reward: velocity related
-        r_vel = self.k_vel * (1 + np.linalg.norm(rel_xy_obst, axis=1) - r_obst_d) \
+        r_vel = self.k_vel * (1 + np.linalg.norm(rel_xy_obst_gaus, axis=1) - r_obst_d) \
                 * np.linalg.norm(drone_vel, axis=1)
         # reward: yaw angle
         yaw = np.abs(R.from_quat(obs["quat"]).as_euler('zyx', degrees=False)[:, 0])
@@ -216,10 +214,9 @@ class RLDroneRacingWrapper(gymnasium.Wrapper):
 
         # reward: immitation learning
         if IMMITATION_LEARNING:
-            self.teacher_controller.compute_control(obs, None)
             demo_action = np.array(
                 [self.teacher_controller.compute_control(
-                    {k: v[i] for k, v in obs.items()}, None) - self.act_bias
+                    {k: v[i] for k, v in obs.items()}, None) - self._act_bias
                 for i in range(N)]
             )
             r_imit = -self.k_imit * np.linalg.norm(demo_action - act, axis=1)
@@ -236,10 +233,26 @@ class RLDroneRacingWrapper(gymnasium.Wrapper):
         #     )
         
         # update saving
-        self.prev_act        = act
-        self._prev_gate      = curr_gate
-        self.prev_gate_pos   = gate_pos
-        self.prev_obst_xy    = obst_xy
-        self.prev_drone_pos  = drone_pos
+        self._prev_act        = act
+        self._prev_gate       = curr_gate
+        self._prev_gate_pos   = gate_pos
+        self._prev_obst_xy    = obst_xy
+        self._prev_drone_pos  = drone_pos
 
         return rewards.astype(np.float32)
+    
+# region Visual
+from stable_baselines3.common.callbacks import BaseCallback
+
+class RenderCallback(BaseCallback):
+    def __init__(self, render_freq=1, verbose=0):
+        super().__init__(verbose)
+        self.render_freq = render_freq
+
+    def _on_step(self) -> bool:
+        if self.n_calls % self.render_freq == 0:
+            try:
+                self.training_env.env_method("render", indices=0)
+            except Exception as e:
+                print(f"Render error: {e}")
+        return True
