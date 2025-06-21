@@ -25,46 +25,59 @@ if IMMITATION_LEARNING:
     # from lsy_drone_racing.control.mpcc import MPCC
     from lsy_drone_racing.control.attitude_pre_scripted import AttitudeController
 
-class RLDroneRacingWrapper(gymnasium.Wrapper):
-    def __init__(self, env: VecDroneRaceEnv):
+class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
+    def __init__(self, 
+                 env: VecDroneRaceEnv,
+                 k_alive = 0.5,
+                 k_obst = 0.2,
+                 k_obst_d = 0.5,
+                 k_gates = 2.0,
+                 k_center = 0.3,
+                 k_vel = +0.04,
+                 k_act = 0.01,
+                 k_act_d = 0.001,
+                 k_yaw = 0.1,
+                 k_crash = 25,
+                 k_success = 40,
+                 k_imit = 0.4):
         super().__init__(env)
         # create action & observation spaces
-        self.num_envs = env.num_envs
+        self._num_envs = env.num_envs
         self.action_space = env.action_space
         state_dim = 36
         lim = np.full(state_dim, np.inf, dtype=np.float32) # set to infinite for now
         self.single_observation_space = spaces.Box(-lim, lim, dtype=np.float32)
-        self.observation_space = batch_space(self.single_observation_space, self.num_envs)
+        self.observation_space = batch_space(self.single_observation_space, self._num_envs)
         # initialize internal state saving variables
         self.obs_env = None
         self._d_safe = 1.0
         self._act_bias = np.array([MASS * GRAVITY, 0.0, 0.0, 0.0], dtype=np.float32)
-        self._prev_act = np.repeat(self._act_bias[None, :], self.num_envs, axis=0)
-        self._prev_gate = np.zeros(self.num_envs, dtype=int)
+        self._prev_act = np.repeat(self._act_bias[None, :], self._num_envs, axis=0)
+        self._prev_gate = np.zeros(self._num_envs, dtype=int)
         # region Param
         """REWARD PARAMETERS"""
-        self.k_living = 0.5
-        self.k_obst = 0.2
-        self.k_obst_d = 0.5
-        self.k_gates = 2.0
-        self.k_center = 0.3
-        self.k_vel = +0.04
-        self.k_act = 0.01
-        self.k_act_d = 0.001
-        self.k_yaw = 0.1
-        self.k_crash = 25
-        self.k_success = 40
-        self.k_imit = 0.4
+        self.k_alive = k_alive
+        self.k_obst = k_obst
+        self.k_obst_d = k_obst_d
+        self.k_gates = k_gates
+        self.k_center = k_center
+        self.k_vel = k_vel
+        self.k_act = k_act
+        self.k_act_d = k_act_d
+        self.k_yaw = k_yaw
+        self.k_crash = k_crash
+        self.k_success = k_success
+        self.k_imit = k_imit
 
     # region Reset
     def reset(self, **kwargs) -> Tuple[np.ndarray, Dict]:
         self.obs_env, info = self.env.reset(**kwargs)           # dict → array(num_envs, ...)
         state = self._obs_to_state(self.obs_env,
-                                   np.repeat(self._act_bias[None, :], self.num_envs, axis=0))
+                                   np.repeat(self._act_bias[None, :], self._num_envs, axis=0))
         self._prev_drone_pos = self.obs_env['pos']
         self._prev_obst_xy = self.obs_env['obstacles_pos'][0][:2]
-        self._prev_act = np.repeat(self._act_bias[None, :], self.num_envs, axis=0)
-        self._prev_gate = np.zeros(self.num_envs, dtype=int)
+        self._prev_act = np.repeat(self._act_bias[None, :], self._num_envs, axis=0)
+        self._prev_gate = np.zeros(self._num_envs, dtype=int)
         self._prev_gate_pos = self.obs_env['gates_pos'][0]
         if IMMITATION_LEARNING:
             config = load_config(Path(__file__).parents[2] / "config/level0.toml")
@@ -170,7 +183,7 @@ class RLDroneRacingWrapper(gymnasium.Wrapper):
             rewards: np.ndarray, shape (N,)
         """
         N = act.shape[0]
-        rewards = np.full(N, self.k_living, dtype=float)
+        rewards = np.full(N, self.k_alive, dtype=float)
         # data preparation
         curr_gate   = obs["target_gate"].astype(int)                # (N,)
         drone_pos   = obs["pos"]                                    # (N, 3)

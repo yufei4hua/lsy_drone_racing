@@ -83,7 +83,10 @@ class AttitudeController(FresssackController):
         self.theta = 0.0 # traveled distance
         self.prev_pos = obs['pos']
 
-        self.gates_theta, _ = self.traj_tool.find_gate_waypoint(self.arc_trajectory, obs['gates_pos'])
+        if len(obs['gates_pos'].shape) > 2: # vector env
+            self.gates_theta, _ = self.traj_tool.find_gate_waypoint(self.arc_trajectory, obs['gates_pos'][0])
+        else:
+            self.gates_theta, _ = self.traj_tool.find_gate_waypoint(self.arc_trajectory, obs['gates_pos'])
 
         self._finished = False
 
