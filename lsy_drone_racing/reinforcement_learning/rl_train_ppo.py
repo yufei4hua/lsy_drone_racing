@@ -95,7 +95,7 @@ class Args:
     """the number of iterations (computed in runtime)"""
 
     # region Reward Coef
-    k_alive:   float = 0.8
+    k_alive:   float = 1.0
     k_obst:    float = 0.2
     k_obst_d:  float = 0.5
     k_gates:   float = 2.0
@@ -177,7 +177,8 @@ class Agent(nn.Module):
             nn.Tanh(),
         )
         self.actor_mean = layer_init(nn.Linear(128, act_dim), std=0.01)
-        self.actor_logstd = layer_init(nn.Linear(128, act_dim), std=0.01)
+        # self.actor_logstd = layer_init(nn.Linear(128, act_dim), std=0.01)
+        self.actor_logstd = nn.Parameter(torch.zeros(1, np.prod(envs.single_action_space.shape)))
 
     def get_value(self, x):
         return self.critic(x)
@@ -185,8 +186,9 @@ class Agent(nn.Module):
     def get_action_and_value(self, x, action=None):
         base = self.actor_base(x)
         mean = self.actor_mean(base)
-        log_std = torch.clamp(self.actor_logstd(base), -5.0, 2.0) # important for training stability
-        std = torch.exp(log_std)
+        # log_std = torch.clamp(self.actor_logstd(base), -5.0, 2.0) # important for training stability
+        action_logstd = self.actor_logstd.expand_as(mean)
+        std = torch.exp(action_logstd)
         dist = Normal(mean, std)
         if action is None:
             action = dist.sample()
