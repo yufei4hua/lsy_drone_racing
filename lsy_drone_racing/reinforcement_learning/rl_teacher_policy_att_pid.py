@@ -125,7 +125,7 @@ class AttitudeController(FresssackController):
             self.ki * self._i_error +
             self.kd * vel_error
         )
-        target_thrust[:, 2] += self.drone_mass * self.g      # 加重力补偿
+        target_thrust[:, 2] += self.drone_mass * self.g
 
         z_axis = R.from_quat(obs["quat"]).as_matrix()[:, :, 2]   # (N,3)
 
