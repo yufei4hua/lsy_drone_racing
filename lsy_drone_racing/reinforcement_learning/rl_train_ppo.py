@@ -5,6 +5,8 @@ import time
 from dataclasses import dataclass
 
 import gymnasium as gym
+from gymnasium.wrappers.vector.jax_to_numpy import JaxToNumpy
+from gymnasium.wrappers.vector import RecordEpisodeStatistics, NormalizeReward, TransformReward
 import numpy as np
 import torch
 import torch.nn as nn
@@ -47,10 +49,12 @@ class Args:
     # Algorithm specific arguments
     env_id: str = "DroneRacing-v0"
     """the id of the environment"""
-    total_timesteps: int = 1e6
+    total_timesteps: int = int(1e6)
     """total timesteps of the experiments"""
     learning_rate: float = 3e-4
     """the learning rate of the optimizer"""
+    dev_envs: str = "cpu"
+    """run jax envrionments on cpu/gpu"""
     num_envs: int = 2
     """the number of parallel game environments"""
     num_steps: int = 2048
@@ -100,12 +104,13 @@ class Args:
     k_yaw:     float = 0.1
     k_crash:   float = 25.0
     k_success: float = 40.0
+    k_finish: float = 40.0
     k_imit:    float = 0.4
     """REWARD PARAMETERS"""
 
 # region Env
 def make_env(config, args, gamma):
-    base_env = VecDroneRaceEnv(
+    env = VecDroneRaceEnv(
         num_envs       = args.num_envs,
         freq           = config.env.freq,
         sim_config     = config.sim,
@@ -115,9 +120,11 @@ def make_env(config, args, gamma):
         disturbances   = config.env.get("disturbances"),
         randomizations = config.env.get("randomizations"),
         seed           = config.env.seed,
+        device         = args.dev_envs,
     )
+    env = JaxToNumpy(env)
     env = RLDroneRacingWrapper(
-        base_env,
+        env,
         k_alive   = args.k_alive,
         k_obst    = args.k_obst,
         k_obst_d  = args.k_obst_d,
@@ -129,11 +136,12 @@ def make_env(config, args, gamma):
         k_yaw     = args.k_yaw,
         k_crash   = args.k_crash,
         k_success = args.k_success,
+        k_finish  = args.k_finish,
         k_imit    = args.k_imit,
     ) # my custom wrapper
-    env = gym.wrappers.vector.RecordEpisodeStatistics(env) # for wandb log
-    env = gym.wrappers.vector.NormalizeReward(env, gamma=gamma) # might help
-    env = gym.wrappers.vector.TransformReward(env, lambda reward: np.clip(reward, -10, 10))
+    env = RecordEpisodeStatistics(env) # for wandb log
+    env = NormalizeReward(env, gamma=gamma) # might help
+    env = TransformReward(env, lambda reward: np.clip(reward, -10, 10))
     return env
 
 
@@ -271,6 +279,7 @@ if __name__ == "__main__":
             next_done = np.logical_or(terminations, truncations)
             rewards[step] = torch.tensor(reward).to(device).view(-1)
             next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(next_done).to(device)
+            envs.render()
 
             # if "final_info" in infos:
             #     for info in infos["final_info"]:
@@ -303,64 +312,64 @@ if __name__ == "__main__":
         b_returns = returns.reshape(-1)
         b_values = values.reshape(-1)
 
-        # region NN update
-        # Optimizing the policy and value network
-        b_inds = np.arange(args.batch_size)
-        clipfracs = []
-        for epoch in range(args.update_epochs):
-            np.random.shuffle(b_inds)
-            for start in range(0, args.batch_size, args.minibatch_size):
-                end = start + args.minibatch_size
-                mb_inds = b_inds[start:end]
+        # # region NN update
+        # # Optimizing the policy and value network
+        # b_inds = np.arange(args.batch_size)
+        # clipfracs = []
+        # for epoch in range(args.update_epochs):
+        #     np.random.shuffle(b_inds)
+        #     for start in range(0, args.batch_size, args.minibatch_size):
+        #         end = start + args.minibatch_size
+        #         mb_inds = b_inds[start:end]
 
-                _, newlogprob, entropy, newvalue = agent.get_action_and_value(b_obs[mb_inds], b_actions[mb_inds])
-                logratio = newlogprob - b_logprobs[mb_inds]
-                ratio = logratio.exp()
+        #         _, newlogprob, entropy, newvalue = agent.get_action_and_value(b_obs[mb_inds], b_actions[mb_inds])
+        #         logratio = newlogprob - b_logprobs[mb_inds]
+        #         ratio = logratio.exp()
 
-                with torch.no_grad():
-                    # calculate approx_kl http://joschu.net/blog/kl-approx.html
-                    old_approx_kl = (-logratio).mean()
-                    approx_kl = ((ratio - 1) - logratio).mean()
-                    clipfracs += [((ratio - 1.0).abs() > args.clip_coef).float().mean().item()]
+        #         with torch.no_grad():
+        #             # calculate approx_kl http://joschu.net/blog/kl-approx.html
+        #             old_approx_kl = (-logratio).mean()
+        #             approx_kl = ((ratio - 1) - logratio).mean()
+        #             clipfracs += [((ratio - 1.0).abs() > args.clip_coef).float().mean().item()]
 
-                mb_advantages = b_advantages[mb_inds]
-                if args.norm_adv:
-                    mb_advantages = (mb_advantages - mb_advantages.mean()) / (mb_advantages.std() + 1e-8)
+        #         mb_advantages = b_advantages[mb_inds]
+        #         if args.norm_adv:
+        #             mb_advantages = (mb_advantages - mb_advantages.mean()) / (mb_advantages.std() + 1e-8)
 
-                # Policy loss
-                pg_loss1 = -mb_advantages * ratio
-                pg_loss2 = -mb_advantages * torch.clamp(ratio, 1 - args.clip_coef, 1 + args.clip_coef)
-                pg_loss = torch.max(pg_loss1, pg_loss2).mean()
+        #         # Policy loss
+        #         pg_loss1 = -mb_advantages * ratio
+        #         pg_loss2 = -mb_advantages * torch.clamp(ratio, 1 - args.clip_coef, 1 + args.clip_coef)
+        #         pg_loss = torch.max(pg_loss1, pg_loss2).mean()
 
-                # Value loss
-                newvalue = newvalue.view(-1)
-                if args.clip_vloss:
-                    v_loss_unclipped = (newvalue - b_returns[mb_inds]) ** 2
-                    v_clipped = b_values[mb_inds] + torch.clamp(
-                        newvalue - b_values[mb_inds],
-                        -args.clip_coef,
-                        args.clip_coef,
-                    )
-                    v_loss_clipped = (v_clipped - b_returns[mb_inds]) ** 2
-                    v_loss_max = torch.max(v_loss_unclipped, v_loss_clipped)
-                    v_loss = 0.5 * v_loss_max.mean()
-                else:
-                    v_loss = 0.5 * ((newvalue - b_returns[mb_inds]) ** 2).mean()
+        #         # Value loss
+        #         newvalue = newvalue.view(-1)
+        #         if args.clip_vloss:
+        #             v_loss_unclipped = (newvalue - b_returns[mb_inds]) ** 2
+        #             v_clipped = b_values[mb_inds] + torch.clamp(
+        #                 newvalue - b_values[mb_inds],
+        #                 -args.clip_coef,
+        #                 args.clip_coef,
+        #             )
+        #             v_loss_clipped = (v_clipped - b_returns[mb_inds]) ** 2
+        #             v_loss_max = torch.max(v_loss_unclipped, v_loss_clipped)
+        #             v_loss = 0.5 * v_loss_max.mean()
+        #         else:
+        #             v_loss = 0.5 * ((newvalue - b_returns[mb_inds]) ** 2).mean()
 
-                entropy_loss = entropy.mean()
-                loss = pg_loss - args.ent_coef * entropy_loss + v_loss * args.vf_coef
+        #         entropy_loss = entropy.mean()
+        #         loss = pg_loss - args.ent_coef * entropy_loss + v_loss * args.vf_coef
 
-                optimizer.zero_grad()
-                loss.backward()
-                nn.utils.clip_grad_norm_(agent.parameters(), args.max_grad_norm)
-                optimizer.step()
+        #         optimizer.zero_grad()
+        #         loss.backward()
+        #         nn.utils.clip_grad_norm_(agent.parameters(), args.max_grad_norm)
+        #         optimizer.step()
 
-            if args.target_kl is not None and approx_kl > args.target_kl:
-                break
+        #     if args.target_kl is not None and approx_kl > args.target_kl:
+        #         break
 
-        y_pred, y_true = b_values.cpu().numpy(), b_returns.cpu().numpy()
-        var_y = np.var(y_true)
-        explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
+        # y_pred, y_true = b_values.cpu().numpy(), b_returns.cpu().numpy()
+        # var_y = np.var(y_true)
+        # explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
 
         # TRY NOT TO MODIFY: record rewards for plotting purposes
         # writer.add_scalar("charts/learning_rate", optimizer.param_groups[0]["lr"], global_step)
@@ -374,10 +383,10 @@ if __name__ == "__main__":
         # print("SPS:", int(global_step / (time.time() - start_time)))
         # writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
 
-    if args.save_model:
-        model_path = f"runs/{run_name}/{args.exp_name}.cleanrl_model"
-        torch.save(agent.state_dict(), model_path)
-        print(f"model saved to {model_path}")
+    # if args.save_model:
+    #     model_path = f"runs/{run_name}/{args.exp_name}.cleanrl_model"
+    #     torch.save(agent.state_dict(), model_path)
+    #     print(f"model saved to {model_path}")
         # from cleanrl_utils.evals.ppo_eval import evaluate
 
         # episodic_returns = evaluate(

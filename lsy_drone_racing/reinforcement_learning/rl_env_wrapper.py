@@ -3,6 +3,7 @@ import numpy as np
 import gymnasium
 from gymnasium import spaces
 from gymnasium.vector.utils import batch_space
+from gymnasium.wrappers.jax_to_numpy import jax_to_numpy
 from lsy_drone_racing.envs.drone_race import DroneRaceEnv, VecDroneRaceEnv
 from jax import Array
 from numpy.typing import NDArray
@@ -22,8 +23,7 @@ IMMITATION_LEARNING = True
 if IMMITATION_LEARNING:
     from pathlib import Path
     from lsy_drone_racing.utils import load_config
-    # from lsy_drone_racing.control.mpcc import MPCC
-    from lsy_drone_racing.control.attitude_pre_scripted import AttitudeController
+    from rl_teacher_policy_att_pid import AttitudeController
 
 class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
     def __init__(self, 
@@ -39,8 +39,12 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
                  k_yaw = 0.1,
                  k_crash = 25,
                  k_success = 40,
+                 k_finish = 60,
                  k_imit = 0.4):
         super().__init__(env)
+        # turn off autoreset
+        env.unwrapped.autoreset = False
+        self.marked_for_reset = np.zeros(env.num_envs, dtype=bool)
         # create action & observation spaces
         self._num_envs = env.num_envs
         self.action_space = env.action_space
@@ -67,33 +71,60 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
         self.k_yaw = k_yaw
         self.k_crash = k_crash
         self.k_success = k_success
+        self.k_finish = k_finish
         self.k_imit = k_imit
 
     # region Reset
-    def reset(self, **kwargs) -> Tuple[np.ndarray, Dict]:
-        self.obs_env, info = self.env.reset(**kwargs)           # dict → array(num_envs, ...)
-        state = self._obs_to_state(self.obs_env,
-                                   np.repeat(self._act_bias[None, :], self._num_envs, axis=0))
+    def _reset_storage(self):
         self._prev_drone_pos = self.obs_env['pos']
-        self._prev_obst_xy = self.obs_env['obstacles_pos'][0][:2]
+        self._prev_obst_xy = self.obs_env['obstacles_pos'][:, 0, :2]
         self._prev_act = np.repeat(self._act_bias[None, :], self._num_envs, axis=0)
         self._prev_gate = np.zeros(self._num_envs, dtype=int)
-        self._prev_gate_pos = self.obs_env['gates_pos'][0]
+        self._prev_gate_pos = self.obs_env['gates_pos'][:, 0]
+
+    def reset(self, *, seed: int | None = None, options: dict | None = None, mask: Array | None = None) -> Tuple[np.ndarray, Dict]:
+        # call lower level reset
+        obs, info = self.env.unwrapped._reset(seed=seed, mask=mask)
+        self.obs_env = {k: jax_to_numpy(v[:, 0]) for k, v in obs.items()}
+        info = {k: jax_to_numpy(v[:, 0]) for k, v in info.items()}
+        state = self._obs_to_state(self.obs_env,
+                                   np.repeat(self._act_bias[None, :], self._num_envs, axis=0))
+        # reset storage
+        self._prev_drone_pos = self.obs_env['pos']
+        self._prev_obst_xy = self.obs_env['obstacles_pos'][:, 0, :2]
+        self._prev_act = np.repeat(self._act_bias[None, :], self._num_envs, axis=0)
+        self._prev_gate = np.zeros(self._num_envs, dtype=int)
+        self._prev_gate_pos = self.obs_env['gates_pos'][:, 0]
+        if mask is None or mask[0]: # if the first world is reset
+            self.traj_record = self.obs_env['pos'][0, :] # debug trajectory
+        # setup teacher policy
         if IMMITATION_LEARNING:
             config = load_config(Path(__file__).parents[2] / "config/level0.toml")
             self.teacher_controller = AttitudeController(self.obs_env, info, config, self)
-        self.traj_record = np.array([self.obs_env['pos']]) # debug
         return state, info
 
     # region Step
     def step(self, action: np.ndarray):
+        if IMMITATION_LEARNING: # test teacher policy
+            action = self.teacher_controller.compute_control(self.obs_env, None) - self._act_bias
         action_exec = action + self._act_bias
         self.obs_env, _, terminated, truncated, info = self.env.step(action_exec)
         state = self._obs_to_state(self.obs_env, action)
         reward = self._reward(self.obs_env, state, action)
+        # self handle autoreset
+        if self.marked_for_reset.any():
+            # add crash & finish reward
+            r_crash = -self.k_crash * (self.marked_for_reset & (self.obs_env["target_gate"] >= 0))
+            r_finish = self.k_finish * (self.marked_for_reset & (self.obs_env["target_gate"] < 0))
+            reward += r_crash + r_finish
+            # reset specific world
+            state, info = self.reset(mask=self.marked_for_reset)
+            terminated = terminated & ~self.marked_for_reset
+            truncated = truncated & ~self.marked_for_reset
         done = terminated | truncated
+        self.marked_for_reset = done # update mask after reset
 
-        self.traj_record = np.vstack([self.traj_record, self.obs_env['pos'][0, :]]) # debug
+        self.traj_record = np.vstack([self.traj_record, self.obs_env['pos'][0, :]]) # debug trajectory
         try:
             draw_line(self, self.traj_record[0:-1:5], rgba=np.array([0.0, 1.0, 0.0, 0.2]))
         except:
@@ -175,7 +206,7 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
     def _reward(self, obs: dict, obs_rl: np.ndarray, act: np.ndarray) -> np.ndarray:
         """
         Args:
-            obs    : dict[str, np.ndarray]   # 字段均为 (N, …)
+            obs    : dict[str, np.ndarray]
             obs_rl : np.ndarray, shape (N, 36)
             act    : np.ndarray, shape (N, 4)
 
@@ -227,23 +258,18 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
 
         # reward: immitation learning
         if IMMITATION_LEARNING:
-            demo_action = np.array(
-                [self.teacher_controller.compute_control(
-                    {k: v[i] for k, v in obs.items()}, None) - self._act_bias
-                for i in range(N)]
-            )
+            demo_action = self.teacher_controller.compute_control(self.obs_env, None) - self._act_bias
             r_imit = -self.k_imit * np.linalg.norm(demo_action - act, axis=1)
             rewards += r_imit
 
         # reward debug
-        # if self._tick % 10 == 0:
-        #     i = 0
-        #     print(
-        #         f"[env {i}] obst:{r_obst[i]:+.3f} | obst_d:{r_obst_d[i]:+.3f} | "
-        #         f"gates:{r_gates[i]:+.3f} | center:{r_center[i]:+.3f} | "
-        #         f"act:{r_act[i]:+.3f} | vel:{r_vel[i]:+.3f} | yaw:{r_yaw[i]:+.3f} | "
-        #         f"total:{rewards[i]:+.3f}"
-        #     )
+        # i = 0
+        # print(
+        #     f"[env {i}] obst:{r_obst[i]:+.3f} | obst_d:{r_obst_d[i]:+.3f} | "
+        #     f"gates:{r_gates[i]:+.3f} | center:{r_center[i]:+.3f} | "
+        #     f"act:{r_act[i]:+.3f} | vel:{r_vel[i]:+.3f} | yaw:{r_yaw[i]:+.3f} | "
+        #     f"total:{rewards[i]:+.3f}"
+        # )
         
         # update saving
         self._prev_act        = act
@@ -253,19 +279,3 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
         self._prev_drone_pos  = drone_pos
 
         return rewards.astype(np.float32)
-    
-# region Visual
-from stable_baselines3.common.callbacks import BaseCallback
-
-class RenderCallback(BaseCallback):
-    def __init__(self, render_freq=1, verbose=0):
-        super().__init__(verbose)
-        self.render_freq = render_freq
-
-    def _on_step(self) -> bool:
-        if self.n_calls % self.render_freq == 0:
-            try:
-                self.training_env.env_method("render", indices=0)
-            except Exception as e:
-                print(f"Render error: {e}")
-        return True
