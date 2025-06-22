@@ -1,5 +1,6 @@
 # docs and experiment results can be found at https://docs.cleanrl.dev/rl-algorithms/ppo/#ppo_continuous_actionpy
 import os
+os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 import random
 import time
 from dataclasses import dataclass
@@ -55,7 +56,7 @@ class Args:
     """the learning rate of the optimizer"""
     dev_envs: str = "cpu"
     """run jax envrionments on cpu/gpu"""
-    num_envs: int = 2
+    num_envs: int = 256
     """the number of parallel game environments"""
     num_steps: int = 2048
     """the number of steps to run in each environment per policy rollout"""
@@ -279,7 +280,7 @@ if __name__ == "__main__":
             next_done = np.logical_or(terminations, truncations)
             rewards[step] = torch.tensor(reward).to(device).view(-1)
             next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(next_done).to(device)
-            envs.render()
+            # envs.render()
 
             # if "final_info" in infos:
             #     for info in infos["final_info"]:
