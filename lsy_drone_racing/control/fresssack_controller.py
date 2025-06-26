@@ -905,6 +905,16 @@ class FresssackController(Controller):
     def episode_callback(self):
         self.ego_pose_tx.destroy_node()
         return super().episode_callback()
+    
+    def trajectory_generate(
+        self, t_total: float, waypoints: NDArray[np.floating],
+    ) -> CubicSpline:
+        """Generate a cubic spline trajectory from waypoints."""
+        diffs = np.diff(waypoints, axis=0)
+        segment_length = np.linalg.norm(diffs, axis=1)
+        arc_cum_length = np.concatenate([[0], np.cumsum(segment_length)])
+        t = arc_cum_length / arc_cum_length[-1] * t_total
+        return CubicSpline(t, waypoints)
 
     def _gen_gate_capsule(self) -> List[tuple[np.ndarray, np.ndarray, float]]:
         """generate capsule for gates, put all capsules of all gates in one list

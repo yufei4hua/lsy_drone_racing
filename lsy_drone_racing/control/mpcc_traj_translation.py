@@ -71,14 +71,29 @@ class MPCC(FresssackController):
         self.init_obstacles(obs=obs, 
                             obs_safe_radius=[0.3, 0.3, 0.3, 0.3])
         
+        # # Demo waypoints
+        # waypoints = np.array(
+        #     [
+        #         [1.0, 1.5, 0.05],
+        #         [0.8, 1.0, 0.2],
+        #         [0.55, -0.3, 0.5],
+        #         [0.2, -1.3, 0.65],
+        #         [1.1, -0.85, 1.1],
+        #         [0.2, 0.5, 0.65],
+        #         [0.0, 1.2, 0.525],
+        #         [0.0, 1.2, 1.1],
+        #         [-0.5, 0.0, 1.1],
+        #         [-0.5, -0.5, 1.1],
+        #     ]
+        # )
+        # trajectory = self.trajectory_generate(12, waypoints)
+        
         # region Trajectory
         # pre-planned trajectory
         # TODO: better trajectory, without 180 turn
         # t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/param_a_5_sec_offsets.csv")
         t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/test_run_third_gate_modified_lots_of_handcraft.csv")
-        # trajectory = CubicSpline(t, pos)
-        self.traj_tool = TrajectoryTool()
-        self.arc_trajectory = self.traj_tool.traj_preprocessing(t, pos)
+        trajectory = CubicSpline(t, pos)
 
         # # easy controller trajectory
         # gates_rotates = R.from_quat(obs['gates_quat'])
@@ -103,12 +118,12 @@ class MPCC(FresssackController):
         # self.gates_norm_list = [gate.norm_vec for gate in self.gates] # 4 * 3 = 12
 
         # trajectory reparameterization
-        # self.traj_tool = TrajectoryTool()
-        # trajectory = self.traj_tool.extend_trajectory(trajectory)
-        # self.arc_trajectory = self.traj_tool.arclength_reparameterize(trajectory)
+        self.traj_tool = TrajectoryTool()
+        trajectory = self.traj_tool.extend_trajectory(trajectory)
+        self.arc_trajectory = self.traj_tool.arclength_reparameterize(trajectory)
         self.arc_trajectory_offset = self.arc_trajectory
         self.gate_theta_list, _ = self.traj_tool.find_gate_waypoint(self.arc_trajectory, [gate.pos for gate in self.gates])
-        self.gate_theta_list[2] -= 0.2
+        # self.gate_theta_list[2] -= 0.2
         # self.gate_theta_list = np.array([2.4 , 4.25, 7.1 , 8.6 ])
 
         # build model & create solver
