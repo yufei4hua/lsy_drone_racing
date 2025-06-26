@@ -12,19 +12,22 @@ from __future__ import annotations  # Python 3.10 type hints
 from statistics import pvariance
 from typing import TYPE_CHECKING
 
+from typing import *
+
 import numpy as np
 import scipy
 from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
-from casadi import MX, cos, sin, vertcat, dot, DM, norm_2, floor, if_else
+from casadi import MX, cos, sin, vertcat, dot, DM, norm_2, floor, if_else, Function
 from scipy.fft import prev_fast_len
 from scipy.interpolate import CubicSpline
 from scipy.spatial.transform import Rotation as R
 from casadi import interpolant
-from sympy import true
-from torch import has_spectral
-from traitlets import TraitError
 
-from lsy_drone_racing.control.fresssack_controller import  *
+import os  
+
+from lsy_drone_racing.control.fresssack_controller import FresssackController
+from lsy_drone_racing.control.fresssack_controller import MultiArrayTx, MarkerArrayTx, CapsuleMarkerTx, MeshMarkerTx, PathTx, TFTx
+ 
 from lsy_drone_racing.control.easy_controller import EasyController
 from lsy_drone_racing.control import Controller
 from lsy_drone_racing.tools.ext_tools import TrajectoryTool
@@ -78,18 +81,9 @@ class MPCC(EasyController):
 
         # # pre-planned trajectory
         # t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/param_c_6_sec_bigger_pillar.csv")
-        t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/test_run_third_gate_modified.csv")
+        t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/test_run_third_gate_modified_even_more_handcraft.csv")
         # t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/param_a_5_sec_offsets.csv")     
         trajectory = CubicSpline(t, pos)
-        # # easy controller trajectory
-        # gates_rotates = R.from_quat(obs['gates_quat'])
-        # rot_matrices = np.array(gates_rotates.as_matrix())
-        # self.gates_norm = np.array(rot_matrices[:,:,1])
-        # self.gates_pos = obs['gates_pos']
-        # # replan trajectory
-        # waypoints = self.calc_waypoints(self.init_pos, self.gates_pos, self.gates_norm)
-        # t, waypoints = self.avoid_collision(waypoints, obs['obstacles_pos'], 0.3)
-        # trajectory = self.trajectory_generate(self.t_total, waypoints)
 
         # global params
         self.N = 50
@@ -106,6 +100,21 @@ class MPCC(EasyController):
         # build model & create solver
         self.acados_ocp_solver, self.ocp = self.create_ocp_solver(self.T_HORIZON, self.N, self.arc_trajectory)
 
+
+        # initialize ros tx
+        self.init_ros_tx()
+
+        # initialize debug function for MPC
+        cost_dict = self.mpcc_cost_components()
+        self.cost_func_debug = Function(
+            'mpcc_cost_debug',
+            [self.x, self.u, self.p],
+            [cost_dict[k] for k in cost_dict],
+            ['x', 'u', 'p'],
+            list(cost_dict.keys()
+            )  # ['total', 'cost_l', ..., 'miu_cost']    
+        )
+
         # initialize
         self.last_theta = 0.0
         self.last_v_theta = 0.0 # TODO: replan?
@@ -117,6 +126,18 @@ class MPCC(EasyController):
 
 
     def init_ros_tx(self):
+        self.mpc_costs_tx_keys = ['total',
+                        'cost_l',
+                        'C_l',
+                        'e_l_cost',
+                        'cost_c',
+                        'C_c',
+                        'e_c_cost',
+                        'ang_cost',
+                        'ctrl_cost',
+                        'miu_cost',
+                        ]
+        
         if ROS_AVAILABLE and self.ros_tx:
             self.mpcc_traj_tx = PathTx(
                 node_name = 'mpcc_path_tx',
@@ -178,6 +199,13 @@ class MPCC(EasyController):
                 node_name = 'obstacle_marker_array_tx',
                 topic_name = 'obstacle_marker_array',
                 queue_size = 5
+            )
+
+            self.mpc_costs_tx = MultiArrayTx(
+                node_name = 'cost_debug_tx', 
+                queue_size = 10,
+                keys = self.mpc_costs_tx_keys,
+                topic_prefix = 'mpcc_cost'
             )
 
            
@@ -280,6 +308,11 @@ class MPCC(EasyController):
             self.qc_dyn
         )
 
+        # For ease of use, contatenate x, u, and p
+        self.x = states
+        self.u = inputs
+        self.p = params
+
         # Initialize the nonlinear model for NMPC formulation
         model = AcadosModel()
         model.name = model_name
@@ -340,7 +373,12 @@ class MPCC(EasyController):
         p_vals = np.concatenate([pd_list.flatten(), tp_list.flatten(), qc_dyn_list])
         return p_vals
 
+
     def mpcc_cost(self):
+        """calculate mpcc cost function"""
+        return self.mpcc_cost_components()['total']
+    
+    def mpcc_cost_components(self):
         """calculate mpcc cost function"""
         pos = vertcat(self.px, self.py, self.pz)
         ang = vertcat(self.roll, self.pitch, self.yaw)
@@ -356,12 +394,35 @@ class MPCC(EasyController):
         e_l = dot(tp_theta_norm, e_theta) * tp_theta_norm
         e_c = e_theta - e_l
 
-        mpcc_cost = (self.q_l + self.q_l_peak * qc_dyn_theta) * dot(e_l, e_l) + \
-                    (self.q_c  + self.q_c_peak * qc_dyn_theta) * dot(e_c, e_c) + \
-                    (ang.T @ self.Q_w @ ang) + \
-                    (control_input.T @ self.R_df @ control_input) + \
-                    (-self.miu) * self.v_theta_cmd
-        return mpcc_cost
+
+
+        C_l = self.q_l + self.q_l_peak * qc_dyn_theta
+        e_l_cost = dot(e_l, e_l)
+        cost_l = C_l * e_l_cost
+
+        C_c = self.q_c  + self.q_c_peak * qc_dyn_theta
+        e_c_cost = dot(e_c, e_c)
+        cost_c = C_c * e_c_cost
+
+        ang_cost = ang.T @ self.Q_w @ ang
+        ctrl_cost = control_input.T @ self.R_df @ control_input
+
+        miu_cost = (-self.miu) * self.v_theta_cmd
+
+        mpcc_cost = cost_l + cost_c + ang_cost + ctrl_cost + miu_cost
+
+        return {
+            'total': mpcc_cost,
+            'cost_l': cost_l,
+            'C_l': C_l,
+            'e_l_cost': e_l_cost,
+            'cost_c': cost_c,
+            'C_c': C_c,
+            'e_c_cost': e_c_cost,
+            'ang_cost': ang_cost,
+            'ctrl_cost': ctrl_cost,
+            'miu_cost': miu_cost,
+        }
 
     def create_ocp_solver(
         self, Tf: float, N: int, trajectory: CubicSpline,  verbose: bool = False
@@ -386,6 +447,8 @@ class MPCC(EasyController):
         # Cost Type
         ocp.cost.cost_type = "EXTERNAL"
 
+        # region MPCC Weights
+        """DEFINITION of GLOBAL MPC WEIGHTS"""
         # Weights
         self.q_l = 160
         self.q_l_peak = 640
@@ -394,7 +457,7 @@ class MPCC(EasyController):
         
         self.Q_w = 1 * DM(np.eye(3))
         self.R_df = DM(np.diag([1,0.5,0.5,0.5]))
-        self.miu = 0.5
+        self.miu = 8
         # param A: works and works well
 
         
@@ -481,47 +544,6 @@ class MPCC(EasyController):
             self.acados_ocp_solver.set(i, "x", self.x_guess[i])
             self.acados_ocp_solver.set(i, "u", self.u_guess[i])
         self.acados_ocp_solver.set(self.N, "x", self.x_guess[self.N])
-        
-        # ## replan trajectory:
-        # if self.pos_change_detect(obs):
-        #     gates_rotates = R.from_quat(obs['gates_quat'])
-        #     rot_matrices = np.array(gates_rotates.as_matrix())
-        #     self.gates_norm = np.array(rot_matrices[:,:,1])
-        #     self.gates_pos = obs['gates_pos']
-        #     # replan trajectory
-        #     waypoints = self.calc_waypoints(self.init_pos, self.gates_pos, self.gates_norm)
-        #     t, waypoints = self.avoid_collision(waypoints, obs['obstacles_pos'], 0.3)
-        #     t, waypoints = self.add_drone_to_waypoints(waypoints, obs['pos'], 0.3, curr_theta=self.last_theta+1)
-        #     trajectory = self.trajectory_generate(self.t_total, waypoints)
-        #     trajectory = self.traj_tool.extend_trajectory(trajectory)
-        #     self.arc_trajectory = self.traj_tool.arclength_reparameterize(trajectory, epsilon=1e-3)
-        #     # write trajectory as parameter to solver
-        #     p_vals = self.get_updated_traj_param(self.arc_trajectory)
-        #     # xcurrent[-2], _ = self.traj_tool.find_nearest_waypoint(self.arc_trajectory, obs["pos"]) # correct theta
-        #     for i in range(self.N): # write current trajectory to solver
-        #         self.acados_ocp_solver.set(i, "p", p_vals)
-        #     # EXP: I do an extra solve here, with v_theta fixed, to provide a feasible solution
-        #         fixed_vel = self.u_guess[i][-1]
-        #         self.acados_ocp_solver.set(i, "lbu", np.array([-10.0, -10.0, -10.0, -10.0, fixed_vel-0.00]))
-        #         self.acados_ocp_solver.set(i, "ubu", np.array([10.0, 10.0, 10.0, 10.0, fixed_vel+0.00]))
-        #     # set initial state
-        #     self.acados_ocp_solver.set(0, "lbx", xcurrent)
-        #     self.acados_ocp_solver.set(0, "ubx", xcurrent)
-        #     # solve with v_theta frozen
-        #     self.acados_ocp_solver.solve()
-        #     # Restore constraints
-        #     for i in range(self.N):
-        #         self.acados_ocp_solver.set(i, "lbu", np.array([-10.0, -10.0, -10.0, -10.0, 0.0]))
-        #         self.acados_ocp_solver.set(i, "ubu", np.array([10.0, 10.0, 10.0, 10.0, 3.0]))
-        #     # Update warm start with solution just solved
-        #     self.x_guess = [self.acados_ocp_solver.get(i, "x") for i in range(self.N + 1)]
-        #     self.u_guess = [self.acados_ocp_solver.get(i, "u") for i in range(self.N)]
-        #     # Write new warm start
-        #     for i in range(self.N):
-        #         self.acados_ocp_solver.set(i, "x", self.x_guess[i])
-        #         self.acados_ocp_solver.set(i, "u", self.u_guess[i])
-        #     self.acados_ocp_solver.set(self.N, "x", self.x_guess[self.N])
-        #     self.x_warmup_traj = np.array([x[:3] for x in self.x_guess]) # for visualization
 
 
         # set initial state
@@ -532,12 +554,14 @@ class MPCC(EasyController):
             pass
 
         x_result = [self.acados_ocp_solver.get(i, "x") for i in range(self.N + 1)]
-        
-        ## update initial guess
-        self.x_guess = [self.acados_ocp_solver.get(i, "x") for i in range(self.N + 1)]
-        self.u_guess = [self.acados_ocp_solver.get(i, "u") for i in range(self.N)]
+        u_result = [self.acados_ocp_solver.get(i, "u") for i in range(self.N)]
+        p_result = [self.acados_ocp_solver.get(i, "p") for i in range(self.N)]
 
-        x1 = self.acados_ocp_solver.get(1, "x")
+        ## update initial guess
+        self.x_guess = x_result
+        self.u_guess = u_result
+
+        x1 = x_result[1]
         w = 1 / self.config.env.freq / self.dt
         self.last_f_collective = self.last_f_collective * (1 - w) + x1[9] * w
         self.last_theta = self.last_theta * (1 - w) + x1[14] * w
@@ -551,8 +575,17 @@ class MPCC(EasyController):
                 self.last_rpy_cmd
             )
         )
-        ## visualization
         
+
+        # Calculate costs every steps for tuning
+        debug_costs : Dict[str, List[np.floating]] = {key : [] for key in self.mpc_costs_tx_keys}
+        
+        for i in range(self.N):
+            result = self.cost_func_debug(x_result[i], u_result[i], p_result[i])
+            for idx, value in enumerate(result):
+                debug_costs[self.mpc_costs_tx_keys[idx]].append(float(value))
+
+        # region Visualization
 
         pos_traj = np.array([x_result[i][:3] for i in range(self.N+1)])
         if self.need_ros_tx():
@@ -562,8 +595,10 @@ class MPCC(EasyController):
                     'frame_id' : 'map'
                 }
             )
+            self.mpc_costs_tx.publish(raw_data = debug_costs)
         if self.need_ros_tx(slow=True):
             pass
+
         try:
             draw_line(self.env, self.arc_trajectory(self.arc_trajectory.x), rgba=np.array([1.0, 1.0, 1.0, 0.2]))
             draw_line(self.env, np.stack([self.arc_trajectory(self.last_theta), obs["pos"]]), rgba=np.array([0.0, 0.0, 1.0, 1.0]))
@@ -575,6 +610,84 @@ class MPCC(EasyController):
             pass
 
         return cmd
+    
+    def ros_transmit(self, obs):
+        if self.need_ros_tx(): 
+            self.path_tx.publish(
+                raw_data = {
+                    'traj' : self.arc_trajectory(self.arc_trajectory.x),
+                    'frame_id' : 'map'
+                }
+            )
+            for idx, tx in enumerate(self.gate_tf_txs):
+                tx.publish(
+                    raw_data = 
+                    {
+                        'pos' : self.gates[idx].pos,
+                        'quat' : self.gates[idx]._quat,
+                        'frame_id' : 'map'
+                    }
+                )
+            for idx, tx in enumerate(self.obstacle_tf_txs):
+                tx.publish(
+                    raw_data = 
+                    {
+                        'pos' : self.obstacles[idx].pos,
+                        'quat' : [0,0,0,1],
+                        'frame_id' : 'map'
+                    }
+                )
+        if self.need_ros_tx(slow = True): 
+            gate_marker_list : List[Marker] = []
+            for idx, tx in enumerate(self.gate_marker_txs):
+                marker : Marker = None
+                if self.next_gate > idx:
+                    marker = tx.process_data(
+                        {
+                            'idx' : 2
+                        }
+                    )
+                elif self.gates_visited[idx]:
+                    marker = tx.process_data(
+                        {
+                            'idx' : 1
+                        }
+                    )
+                else:
+                    marker = tx.process_data(
+                        {
+                            'idx' : 0
+                        }
+                    )
+                gate_marker_list.append(marker)
+            self.gate_marker_array_tx.publish(
+                {
+                    'markers' : gate_marker_list
+                }
+            )
+
+            obstacle_marker_list = []
+            for idx, tx in enumerate(self.obstacle_marker_txs):
+                marker : Marker = None
+                if self.obstacles_visited[idx]:
+                    marker = tx.process_data(
+                        {
+                            'idx' : 1
+                        }
+                        )
+                else:
+                    marker = tx.process_data(
+                        {
+                            'idx' : 0
+                        }
+                        )
+                obstacle_marker_list.append(marker)
+            self.obstacle_marker_array_tx.publish(
+                {
+                    'markers' : obstacle_marker_list
+                }
+            )
+            
 
     def step_callback(
         self,
@@ -588,6 +701,8 @@ class MPCC(EasyController):
         """Increment the tick counter."""
         self.step_update(obs = obs)
         self.update_next_gate()
+        self.ros_transmit(obs = obs)
+
 
         return self.finished
 

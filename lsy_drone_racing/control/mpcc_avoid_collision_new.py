@@ -58,7 +58,7 @@ class MPCC(FresssackController):
             info: Additional environment information from the reset.
             config: The configuration of the environment.
         """
-        super().__init__(obs, info, config, ros_tx_freq = None)
+        super().__init__(obs, info, config, ros_tx_freq = 10)
         self.freq = config.env.freq
         self._tick = 0
 
@@ -72,6 +72,7 @@ class MPCC(FresssackController):
         self.init_obstacles(obs=obs, 
                             obs_safe_radius=[0.3, 0.3, 0.3, 0.3])
         
+        # region Trajectory
         # # Demo waypoints
         # waypoints = np.array(
         #     [
@@ -90,7 +91,7 @@ class MPCC(FresssackController):
         # trajectory = self.trajectory_generate(self.t_total, waypoints)
         # pre-planned trajectory
         # t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/param_a_5_sec_offsets.csv")
-        t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/test_run_third_gate_modified.csv")
+        t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/test_run_third_gate_modified_lots_of_handcraft.csv")
         trajectory = CubicSpline(t, pos)
         # # easy controller trajectory
         # gates_rotates = R.from_quat(obs['gates_quat'])
@@ -102,7 +103,7 @@ class MPCC(FresssackController):
         # # t, waypoints = self.avoid_collision(waypoints, obs['obstacles_pos'], 0.3)
         # trajectory = self.trajectory_generate(self.t_total, waypoints)
 
-        # global params
+        # region Global params
         self.N = 40
         self.T_HORIZON = 0.6
         self.dt = self.T_HORIZON / self.N
@@ -158,6 +159,7 @@ class MPCC(FresssackController):
                         'cost_obs',
                         'miu_cost',
                         'cost_g_c']
+        
         if ROS_AVAILABLE and self.ros_tx:
             self.mpcc_traj_tx = PathTx(
                 node_name = 'mpcc_path_tx',
@@ -241,6 +243,7 @@ class MPCC(FresssackController):
                 topic_prefix = 'mpcc_cost'
             )
             
+    # region Model
     def export_quadrotor_ode_model(self) -> AcadosModel:
         """Symbolic Quadrotor Model."""
         # Define name of solver to be used in script
@@ -360,6 +363,7 @@ class MPCC(FresssackController):
 
         return model
     
+    # region Capsule Dist
     def calc_obst_distance(self, pos, a, b):
         """calculate distances of pos to every obstacles with casadi
         Args:
@@ -378,6 +382,7 @@ class MPCC(FresssackController):
         dist = norm_2(vec)
         return dist, vec
     
+    # region Casadi Interp
     def casadi_linear_interp(self, theta, theta_list, p_flat, dim=3):
         """Manually interpolate a 3D path using CasADi symbolic expressions.
         
@@ -412,6 +417,7 @@ class MPCC(FresssackController):
 
         return p_interp
     
+    # region Traj Param
     def get_updated_traj_param(self, trajectory: CubicSpline):
         """get updated trajectory parameters upon replaning"""
         # construct pd/tp lists from current trajectory
@@ -428,7 +434,7 @@ class MPCC(FresssackController):
         p_vals = np.concatenate([pd_list.flatten(), tp_list.flatten(), qc_dyn_list.flatten()])
         return p_vals
     
-    
+    # region MPCC Cost
     def mpcc_cost_components(self):
         pos = vertcat(self.px, self.py, self.pz)
         ang = vertcat(self.roll, self.pitch, self.yaw)
@@ -448,6 +454,7 @@ class MPCC(FresssackController):
         e_c = e_theta - e_l
 
         # cost for gates
+        q_g_c = 0.0
         cost_g_c = 0.0
         for i in range(self.num_gates):
             idx = i * 6
@@ -458,6 +465,7 @@ class MPCC(FresssackController):
             e_gate_c = e_gate_theta - e_gate_l
             e_gate_c_square = dot(e_gate_c, e_gate_c)
             cost_g_c += self.q_c_peak[i] * qc_dyn_theta_list[i] * e_gate_c_square
+            q_g_c += self.q_c_peak[i] * qc_dyn_theta_list[i]
 
         # cost for obstacles
         q_c_supress = 0.0
@@ -509,8 +517,8 @@ class MPCC(FresssackController):
             'C_l': C_l,
             'e_l_cost': e_l_cost,
             'cost_c': cost_c,
-            'C_c': C_c,
-            'e_c_cost': e_c_cost,
+            'C_c': C_c + q_g_c,
+            'e_c_cost': e_c_cost + cost_g_c,
             'ang_cost': ang_cost,
             'ctrl_cost': ctrl_cost,
             'cost_obs': cost_obs,
@@ -522,6 +530,7 @@ class MPCC(FresssackController):
         """calculate mpcc cost function"""
         return self.mpcc_cost_components()['total']
 
+    # region Solver create
     def create_ocp_solver(
         self, Tf: float, N: int, trajectory: CubicSpline,  verbose: bool = False
     ) -> tuple[AcadosOcpSolver, AcadosOcp]:
@@ -545,22 +554,19 @@ class MPCC(FresssackController):
         # Cost Type
         ocp.cost.cost_type = "EXTERNAL"
 
-        """DEFINITION of GLOBAL MPC WEIGHTS"""
-        """DEFINITION of GLOBAL MPC WEIGHTS"""
-        """DEFINITION of GLOBAL MPC WEIGHTS"""
-        """DEFINITION of GLOBAL MPC WEIGHTS"""
+        # region MPCC Weights
         """DEFINITION of GLOBAL MPC WEIGHTS"""
 
         # MPCC Cost Weights
-        self.q_l = 180
-        self.q_l_peak = 650
+        self.q_l = 800
+        self.q_l_peak = 8000
         self.q_c = 80
         self.q_c_peak = [800, 800, 800, 800]
         self.q_c_sigma1 = [0.5, 0.5, 0.5, 0.3]
         self.q_c_sigma2 = [0.2, 0.2, 0.5, 0.5]
         self.Q_w = 1 * DM(np.eye(3))
         self.R_df = DM(np.diag([1,0.4,0.4,0.4]))
-        self.miu = 0.5
+        self.miu = 0.01
         # obstacle relavent
         self.obst_w = 50
         self.d_extend = 0.15 # extend distance to supress q_c
@@ -709,6 +715,8 @@ class MPCC(FresssackController):
                 }
             )
 
+
+    # region Compute Control
     def compute_control(
         self, obs: dict[str, NDArray[np.floating]], info: dict | None = None
     ) -> NDArray[np.floating]:
@@ -750,6 +758,7 @@ class MPCC(FresssackController):
             self.acados_ocp_solver.set(i, "u", self.u_guess[i])
         self.acados_ocp_solver.set(self.N, "x", self.x_guess[self.N])
 
+        # region Objects update
         ## update obstacles & write parameters
         need_gate_update, _ = self.update_gate_if_needed(obs)
         need_obs_update, _ = self.update_obstacle_if_needed(obs)
@@ -814,15 +823,16 @@ class MPCC(FresssackController):
         self.acados_ocp_solver.set(0, "lbx", xcurrent)
         self.acados_ocp_solver.set(0, "ubx", xcurrent)
 
+        # region Dyn vel lim
         ## EXP: dynamic velocity limit | works well! It's different than only increase q_l.
         # dyn_ub_vel = self.lb_vel + (self.ub_vel - self.lb_vel) * (1 - 0.9 * np.exp(-2 * np.min(np.linalg.norm(obs['pos'] - obs['gates_pos'], axis=-1)) ** 4))
-        dyn_vel_hard_code_factor = [3, 4, 1, 10]
-        dyn_ub_vel = self.lb_vel + (self.ub_vel - self.lb_vel) * (1 - 1.0 * np.exp(-dyn_vel_hard_code_factor[obs['target_gate']] * np.linalg.norm(obs['pos'] - obs['gates_pos'][obs['target_gate']], axis=-1) ** 4))
-        for i in range(self.N):
-            self.acados_ocp_solver.set(i, "lbu", np.array([-10.0, -10.0, -10.0, -10.0, self.lb_vel]))
-            self.acados_ocp_solver.set(i, "ubu", np.array([10.0, 10.0, 10.0, 10.0, dyn_ub_vel]))
+        # dyn_vel_hard_code_factor = [3, 4, 1, 10]
+        # dyn_ub_vel = self.lb_vel + (self.ub_vel - self.lb_vel) * (1 - 1.0 * np.exp(-dyn_vel_hard_code_factor[obs['target_gate']] * np.linalg.norm(obs['pos'] - obs['gates_pos'][obs['target_gate']], axis=-1) ** 4))
+        # for i in range(self.N):
+        #     self.acados_ocp_solver.set(i, "lbu", np.array([-10.0, -10.0, -10.0, -10.0, self.lb_vel]))
+        #     self.acados_ocp_solver.set(i, "ubu", np.array([10.0, 10.0, 10.0, 10.0, dyn_ub_vel]))
 
-        # test:
+        # safety exit:
         if self.last_theta >= 8.59:
             self.finished = True
 
@@ -861,8 +871,7 @@ class MPCC(FresssackController):
             for idx, value in enumerate(result):
                 debug_costs[self.mpc_costs_tx_keys[idx]].append(float(value))
 
-        ## visualization
-
+        # region Visualization
 
         pos_traj = np.array([x_result[i][:3] for i in range(self.N+1)])
         if self.need_ros_tx():
