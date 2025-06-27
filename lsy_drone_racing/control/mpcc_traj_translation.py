@@ -90,7 +90,7 @@ class MPCC(FresssackController):
         # region Trajectory
         # pre-planned trajectory
         # TODO: better trajectory, without 180 turn
-        t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/traj_8.csv")
+        t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/traj_9.csv")
         # t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/test_run_third_gate_modified_lots_of_handcraft.csv")
         trajectory = CubicSpline(t, pos)
 
@@ -122,7 +122,7 @@ class MPCC(FresssackController):
         self.arc_trajectory = self.traj_tool.arclength_reparameterize(trajectory)
         self.arc_trajectory_offset = self.arc_trajectory
         self.gate_theta_list, _ = self.traj_tool.find_gate_waypoint(self.arc_trajectory, [gate.pos for gate in self.gates])
-        self.gate_theta_list[2] += 0.4
+        # self.gate_theta_list[2] -= 0.3
         # self.gate_theta_list = np.array([2.4 , 4.25, 7.1 , 8.6 ])
 
         # build model & create solver
@@ -568,19 +568,20 @@ class MPCC(FresssackController):
         self.q_l_peak = 800
         self.q_c = 80
         self.q_c_peak = [1000, 1000, 1400, 1000]
-        self.q_c_sigma1 = [0.6, 0.6, 0.9, 0.6]
-        self.q_c_sigma2 = [0.1, 0.2, 0.7, 0.5]
+        self.q_c_sigma1 = [0.6, 0.6, 1.0, 0.3]
+        self.q_c_sigma2 = [0.15, 0.3, 0.6, 0.1]
         self.gate_interp_sigma1 = [0.5, 0.5, 0.9, 0.5]
-        self.gate_interp_sigma2 = [0.5, 0.5, 0.8, 0.5]
+        self.gate_interp_sigma2 = [0.3, 0.5, 0.7, 1.5]
         self.Q_w = 1 * DM(np.eye(3))
         self.R_df = DM(np.diag([1,0.4,0.4,0.4]))
-        self.miu = 0.5
+        self.miu = 0.8
         # obstacle relavent
         self.obst_w = 40
         self.d_extend = 0.15 # extend distance to supress q_c
         # velocity bounds
+        # TODO: any way to discard lower bound?
         self.lb_vel = 0.7
-        self.ub_vel = 2.5
+        self.ub_vel = 2.7
 
         
         ocp.model.cost_expr_ext_cost = self.mpcc_cost()

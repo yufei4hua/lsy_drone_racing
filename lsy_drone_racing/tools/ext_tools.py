@@ -157,7 +157,7 @@ class TrajectoryTool:
         delta_theta = min(theta_original[1] - theta_original[0], 0.2)
         # calc last derivative
         p_end = trajectory(theta_original[-1])
-        dp_end = trajectory.derivative(1)(theta_original[-1] - 0.1)
+        dp_end = trajectory.derivative(1)(theta_original[-1])
         dp_end_normalized = dp_end / np.linalg.norm(dp_end)
         # calc extended theta list
         theta_extend = np.arange(theta_original[-1] + delta_theta, theta_original[-1] + extend_length, delta_theta)
@@ -210,7 +210,7 @@ class TrajectoryTool:
         return idx_nearest * sample_interval, wp_sample[idx_nearest]
     
     def find_gate_waypoint(
-            self, trajectory: CubicSpline, gates_pos: NDArray[np.floating], total_length: float = None
+            self, trajectory: CubicSpline, gates_pos: NDArray[np.floating], total_length: float = None, sample_interval:float = 0.05
         ):
         """find waypoints of gates center, mainly corresponding indices
 
@@ -224,9 +224,18 @@ class TrajectoryTool:
         indices = []
         gates_wp = []
         for pos in gates_pos:
-            idx, wp = self.find_nearest_waypoint(trajectory, pos, total_length)
+            idx, wp = self.find_nearest_waypoint(trajectory, pos, total_length, sample_interval)
             indices.append(idx)
             gates_wp.append(wp)
+        # NOTE: specially handle 3rd gate, find largest y as gate point
+        total_length = trajectory.x[-1]
+        t_sample = np.arange(0, total_length, sample_interval)
+        wp_sample = trajectory(t_sample)
+        # find waypoint with largest y
+        start_idx2 = int((indices[2]-1.0)//sample_interval)
+        idx2 = start_idx2 + np.argmax(wp_sample[start_idx2:, 1]-wp_sample[start_idx2:, 2])
+        gates_wp[2] = wp_sample[idx2]
+        indices[2] = idx2 * sample_interval
         return np.array(indices), np.array(gates_wp)
 
 class GeometryTool:
