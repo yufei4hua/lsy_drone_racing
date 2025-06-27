@@ -30,6 +30,7 @@ dependencies = [
     "crazyflow >= 0.0.1",
     "jax >0.5,<0.6",
     "matplotlib >= 3.10.0",
+    "casadi >= 3.7.0",
 ]
 
 [project.optional-dependencies]
