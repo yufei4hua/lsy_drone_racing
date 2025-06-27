@@ -13,16 +13,10 @@ from statistics import pvariance
 from typing import TYPE_CHECKING
 
 import numpy as np
-import scipy
 from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
 from casadi import MX, cos, sin, vertcat, dot, DM, norm_2, floor, if_else
-from scipy.fft import prev_fast_len
 from scipy.interpolate import CubicSpline
 from scipy.spatial.transform import Rotation as R
-from casadi import interpolant
-from sympy import true
-from torch import has_spectral
-from traitlets import TraitError
 
 from lsy_drone_racing.control.fresssack_controller import FresssackController
 from lsy_drone_racing.control.easy_controller import EasyController

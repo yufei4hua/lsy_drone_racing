@@ -18,7 +18,6 @@ from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
 from casadi import MX, DM, cos, sin, vertcat, dot, norm_2, floor, if_else, exp, Function, power, fmin
 from scipy.interpolate import CubicSpline
 from scipy.spatial.transform import Rotation as R
-from casadi import interpolant
 
 from lsy_drone_racing.control.fresssack_controller import FresssackController
 from lsy_drone_racing.control.fresssack_controller import MultiArrayTx, MarkerArrayTx, CapsuleMarkerTx, MeshMarkerTx, PathTx, TFTx
@@ -91,8 +90,8 @@ class MPCC(FresssackController):
         # region Trajectory
         # pre-planned trajectory
         # TODO: better trajectory, without 180 turn
-        # t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/param_a_5_sec_offsets.csv")
-        t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/test_run_third_gate_modified_lots_of_handcraft.csv")
+        t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/traj_8.csv")
+        # t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/test_run_third_gate_modified_lots_of_handcraft.csv")
         trajectory = CubicSpline(t, pos)
 
         # # easy controller trajectory
@@ -123,7 +122,7 @@ class MPCC(FresssackController):
         self.arc_trajectory = self.traj_tool.arclength_reparameterize(trajectory)
         self.arc_trajectory_offset = self.arc_trajectory
         self.gate_theta_list, _ = self.traj_tool.find_gate_waypoint(self.arc_trajectory, [gate.pos for gate in self.gates])
-        self.gate_theta_list[2] -= 0.25
+        self.gate_theta_list[2] += 0.4
         # self.gate_theta_list = np.array([2.4 , 4.25, 7.1 , 8.6 ])
 
         # build model & create solver
@@ -568,16 +567,16 @@ class MPCC(FresssackController):
         self.q_l = 200
         self.q_l_peak = 800
         self.q_c = 80
-        self.q_c_peak = [1000, 1000, 1200, 1000]
-        self.q_c_sigma1 = [0.6, 0.6, 0.7, 0.7]
-        self.q_c_sigma2 = [0.1, 0.2, 0.6, 0.5]
-        self.gate_interp_sigma1 = [0.5, 0.5, 0.7, 0.5]
-        self.gate_interp_sigma2 = [0.5, 0.5, 0.7, 0.5]
+        self.q_c_peak = [1000, 1000, 1400, 1000]
+        self.q_c_sigma1 = [0.6, 0.6, 0.9, 0.6]
+        self.q_c_sigma2 = [0.1, 0.2, 0.7, 0.5]
+        self.gate_interp_sigma1 = [0.5, 0.5, 0.9, 0.5]
+        self.gate_interp_sigma2 = [0.5, 0.5, 0.8, 0.5]
         self.Q_w = 1 * DM(np.eye(3))
         self.R_df = DM(np.diag([1,0.4,0.4,0.4]))
         self.miu = 0.5
         # obstacle relavent
-        self.obst_w = 50
+        self.obst_w = 40
         self.d_extend = 0.15 # extend distance to supress q_c
         # velocity bounds
         self.lb_vel = 0.7
@@ -865,14 +864,17 @@ class MPCC(FresssackController):
             pass
 
         if not hasattr(self, "trajectory_record"):
+            self.trajectory_interp = []
             self.trajectory_record = []
-        self.trajectory_record.append(self.arc_trajectory(self.last_theta)+self.gate_interp_list(self.last_theta)*self.curr_gate_offset)
+        self.trajectory_interp.append(self.arc_trajectory(self.last_theta)+self.gate_interp_list(self.last_theta)*self.curr_gate_offset)
+        self.trajectory_record.append(obs['pos'])
 
         try:
-            draw_line(self.env, self.arc_trajectory(self.arc_trajectory.x), self.hex2rgba("#ffffff84"))
-            draw_line(self.env, np.array(self.trajectory_record), rgba=self.hex2rgba("#ff9500da"))
+            draw_line(self.env, self.arc_trajectory(self.arc_trajectory.x), self.hex2rgba("#ffffff83")) # original trajectory
+            # draw_line(self.env, self.arc_trajectory_offset(self.arc_trajectory_offset.x), rgba=self.hex2rgba("#2b2b2b7d")) # translated trajectory
+            draw_line(self.env, np.array(self.trajectory_interp), rgba=self.hex2rgba("#ff9500da")) # interp trajectory
+            draw_line(self.env, np.array(self.trajectory_record), rgba=self.hex2rgba("#2BFF00F9")) # recorded trajectory
             # draw_line(self.env, self.arc_trajectory(self.gate_theta_list), rgba=self.hex2rgba("#F209FEFA")) # gate theta
-            draw_line(self.env, self.arc_trajectory_offset(self.arc_trajectory_offset.x), rgba=self.hex2rgba("#00ff0d96"))
             # draw_line(self.env, np.stack([self.arc_trajectory_offset(self.last_theta), obs["pos"]]), rgba=self.hex2rgba("#002aff55"))
             draw_line(self.env, pos_traj,rgba=self.hex2rgba("#ffff00a0"))
             # obstacles: plot a line from pos to the cylinder when dist < self.d_safe
