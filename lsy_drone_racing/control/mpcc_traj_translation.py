@@ -42,6 +42,7 @@ try:
     ROS_AVAILABLE = True
 except:
     ROS_AVAILABLE = False
+ROS_AVAILABLE = False
 
 
 class MPCC(FresssackController):
@@ -63,12 +64,12 @@ class MPCC(FresssackController):
         self.env = env
         self.init_gates(obs=obs,
                         gate_outer_size=[0.8, 0.8, 0.8, 0.8],   # capsule built in between inner & outer
-                        thickness=[0.3, 0.3, 0.3, 0.05],     # thickness of capsule, gaussian cost
+                        thickness=[0.3, 0.3, 0.3, 0.01],     # thickness of capsule, gaussian cost
                         # thickness=[0.2, 0.2, 0.2, 0.2],     # thickness of capsule, gaussian cost
                         )
-
+        # region Cylinder radius
         self.init_obstacles(obs=obs, 
-                            obs_safe_radius=[0.3, 0.3, 0.3, 0.3])
+                            obs_safe_radius=[0.25, 0.25, 0.3, 0.10])#[0.3, 0.3, 0.3, 0.3])
         
         # # Demo waypoints
         # waypoints = np.array(
@@ -90,7 +91,7 @@ class MPCC(FresssackController):
         # region Trajectory
         # pre-planned trajectory
         # TODO: better trajectory, without 180 turn
-        t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/traj_9.csv")
+        t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/traj_10.csv")
         # t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/test_run_third_gate_modified_lots_of_handcraft.csv")
         trajectory = CubicSpline(t, pos)
 
@@ -122,8 +123,6 @@ class MPCC(FresssackController):
         self.arc_trajectory = self.traj_tool.arclength_reparameterize(trajectory)
         self.arc_trajectory_offset = self.arc_trajectory
         self.gate_theta_list, _ = self.traj_tool.find_gate_waypoint(self.arc_trajectory, [gate.pos for gate in self.gates])
-        # self.gate_theta_list[2] -= 0.3
-        # self.gate_theta_list = np.array([2.4 , 4.25, 7.1 , 8.6 ])
 
         # build model & create solver
         self.acados_ocp_solver, self.ocp = self.create_ocp_solver(self.T_HORIZON, self.N, self.arc_trajectory)
@@ -491,14 +490,15 @@ class MPCC(FresssackController):
             idx = i * 3
             cyl_xy = self.obst_list[idx     : idx + 2] # extract params from model.p
             cyl_r =  self.obst_list[idx + 2 : idx + 3]
-            dis = self.calc_obst_distance(pd_theta_offset, cyl_xy) # EXP: use trajectory collision to supress q_c & miu
+            dis = self.calc_obst_distance(pd_theta_offset, cyl_xy) # EXP: use trajectory collision to supress q_c
             # trick: to supress q_c & miu when running into obstacle extended surfaces
             q_c_supress += exp( -power(dis/(0.5*(self.d_extend+cyl_r)), 2) )
             # soft punish when getting into safe range: when , cost = gaussian(distance) if outside surface else 1.0
             dis = self.calc_obst_distance(pos, cyl_xy)
             obst_cost += exp( -power(dis/(0.5*cyl_r), 2) )
 
-        q_c_factor = 1 - 0.9 * q_c_supress
+        q_c_factor = 1 - 0.6 * q_c_supress  # supress q_c based on trajectory collision
+        miu_factor = 1 - 0.9 * q_c_supress  # supress miu 
 
         # Break down the costs
         C_l = self.q_l + self.q_l_peak * ql_dyn_theta
@@ -514,7 +514,7 @@ class MPCC(FresssackController):
 
         cost_obs = self.obst_w * obst_cost
 
-        miu_cost = q_c_factor * (-self.miu) * self.v_theta_cmd
+        miu_cost = (-self.miu) * miu_factor * self.v_theta_cmd
 
         mpcc_cost = cost_l + cost_c + ang_cost + ctrl_cost + cost_obs + miu_cost
 
@@ -566,22 +566,22 @@ class MPCC(FresssackController):
         # MPCC Cost Weights
         self.q_l = 200
         self.q_l_peak = 800
-        self.q_c = 80
-        self.q_c_peak = [1000, 1000, 1400, 1000]
-        self.q_c_sigma1 = [0.6, 0.6, 1.0, 0.3]
-        self.q_c_sigma2 = [0.15, 0.3, 0.6, 0.1]
+        self.q_c = 100
+        self.q_c_peak = [1400, 1450, 1600, 600]
+        self.q_c_sigma1 = [0.7, 0.6, 1.0, 0.5]
+        self.q_c_sigma2 = [0.2, 0.4, 0.6, 0.1]
         self.gate_interp_sigma1 = [0.5, 0.5, 0.9, 0.5]
         self.gate_interp_sigma2 = [0.3, 0.5, 0.7, 1.5]
         self.Q_w = 1 * DM(np.eye(3))
         self.R_df = DM(np.diag([1,0.4,0.4,0.4]))
-        self.miu = 0.8
+        self.miu = 1
         # obstacle relavent
         self.obst_w = 40
         self.d_extend = 0.15 # extend distance to supress q_c
         # velocity bounds
         # TODO: any way to discard lower bound?
-        self.lb_vel = 0.7
-        self.ub_vel = 2.7
+        self.lb_vel = 0.8
+        self.ub_vel = 3.0
 
         
         ocp.model.cost_expr_ext_cost = self.mpcc_cost()
@@ -777,19 +777,19 @@ class MPCC(FresssackController):
             self.arc_trajectory_offset = self.arc_trajectory
             p_traj = self.get_updated_traj_param(self.arc_trajectory_offset)
             p_obst = self.get_cylinder_param()
-            p_gate_offset = self.get_curr_gate_offset(self.traj_update_gate, self.gates[self.traj_update_gate].norm_vec)
+            p_gate_offset = self.get_curr_gate_offset(self.traj_update_gate)#, self.gates[self.traj_update_gate].norm_vec)
             p_full = np.concatenate([p_traj, p_obst, p_gate_offset])
             for i in range(self.N):
                 self.acados_ocp_solver.set(i, "p", p_full)
 
-        self.curr_gate_offset = self.get_curr_gate_offset(self.traj_update_gate, self.gates[self.traj_update_gate].norm_vec)
+        self.curr_gate_offset = self.get_curr_gate_offset(self.traj_update_gate)#, self.gates[self.traj_update_gate].norm_vec)
         need_gate_update, _ = self.update_gate_if_needed(obs)
         need_obs_update, _ = self.update_obstacle_if_needed(obs)
         if need_gate_update or need_obs_update:
             # translate trajectory
             p_traj = self.get_updated_traj_param(self.arc_trajectory)
             p_obst = self.get_cylinder_param()
-            p_gate_offset = self.get_curr_gate_offset(self.traj_update_gate, self.gates[self.traj_update_gate].norm_vec)
+            p_gate_offset = self.get_curr_gate_offset(self.traj_update_gate)#, self.gates[self.traj_update_gate].norm_vec)
             p_full = np.concatenate([p_traj, p_obst, p_gate_offset])
             for i in range(self.N):
                 self.acados_ocp_solver.set(i, "p", p_full)

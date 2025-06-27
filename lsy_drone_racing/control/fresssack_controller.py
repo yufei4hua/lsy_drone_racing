@@ -15,7 +15,6 @@ try:
 except:
     LOCAL_MODE = False
 
-ROS_AVAILABLE = False
 try:
     import rclpy
     from rclpy.node import Node
@@ -30,6 +29,7 @@ try:
     ROS_AVAILABLE = True
 except:
     ROS_AVAILABLE = False
+ROS_AVAILABLE = False
 
 
 import numpy as np
