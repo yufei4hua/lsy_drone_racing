@@ -17,6 +17,7 @@ jobs:
       KAGGLE_USERNAME: ${{ secrets.KaggleUsername }}
       KAGGLE_KEY: ${{ secrets.KaggleKey }}
       ACADOS_INSTALL_DIR: ${{ github.workspace }}/acados
+      ACADOS_SOURCE_DIR: ${{ github.workspace }}/acados
       LD_LIBRARY_PATH: ${{ github.workspace }}/acados/lib
       PYTHONPATH: ${{ github.workspace }}/acados/interfaces/acados_template/python
 
@@ -45,6 +46,13 @@ jobs:
           cd build
           cmake -DACADOS_WITH_C_INTERFACE=ON -DACADOS_WITH_QPOASES=ON ..
           make install -j4
+
+      - name: Download Tera Renderer
+        run: |
+          mkdir -p ${{ github.workspace }}/acados/bin
+          curl -L https://github.com/acados/tera_renderer/releases/download/v0.2.0/t_renderer-v0.2.0-linux-amd64 \
+            -o ${{ github.workspace }}/acados/bin/t_renderer
+          chmod +x ${{ github.workspace }}/acados/bin/t_renderer
 
       - name: Install Acados Interface
         run: |
