@@ -15,14 +15,13 @@ from typing import *
 import os
 import numpy as np
 from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
-from casadi import MX, DM, cos, sin, vertcat, dot, norm_2, floor, if_else, exp, Function, power, fmin
+from casadi import MX, DM, cos, sin, vertcat, dot, norm_2, floor, if_else, exp, Function, power
 from scipy.interpolate import CubicSpline
 from scipy.spatial.transform import Rotation as R
 
 from lsy_drone_racing.control.fresssack_controller import FresssackController
-from lsy_drone_racing.control.fresssack_controller import MultiArrayTx, MarkerArrayTx, CapsuleMarkerTx, MeshMarkerTx, PathTx, TFTx
 
-from lsy_drone_racing.tools.ext_tools import TrajectoryTool, TransformTool
+from lsy_drone_racing.tools.ext_tools import TrajectoryTool
 from lsy_drone_racing.utils.utils import draw_line
 
 if TYPE_CHECKING:
@@ -37,6 +36,7 @@ try:
     from nav_msgs.msg import Path
     from tf2_ros import TransformBroadcaster
     from visualization_msgs.msg import Marker, MarkerArray
+    from lsy_drone_racing.control.fresssack_controller import MultiArrayTx, MarkerArrayTx, CapsuleMarkerTx, MeshMarkerTx, PathTx, TFTx
 
     from transformations import quaternion_from_euler, euler_from_quaternion
     ROS_AVAILABLE = True
