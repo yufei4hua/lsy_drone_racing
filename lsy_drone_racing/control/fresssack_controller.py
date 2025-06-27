@@ -1015,13 +1015,16 @@ class FresssackController(Controller):
             cylinder_params.append(r)
         return np.array(cylinder_params, dtype=np.float32)
     
-    def get_curr_gate_offset(self, curr_gate):
+    def get_curr_gate_offset(self, curr_gate, curr_gate_norm=None):
         """return current gate position change
         run detect pos change outside in control loop
         Returns:
             NDArray(3): position change of current target gate
         """
-        return self.gates[curr_gate].pos - self.gates_pos_init[curr_gate]
+        curr_gate_offset = self.gates[curr_gate].pos - self.gates_pos_init[curr_gate]
+        if curr_gate_norm is not None: # NOTE: EXP: translate trajectory only on normal plane of gate
+            curr_gate_offset = curr_gate_offset - np.dot(curr_gate_offset, curr_gate_norm) * curr_gate_norm
+        return curr_gate_offset
 
     def hex2rgba(self, hex="#FFFFFFFF"):
         hex = hex.lstrip('#')

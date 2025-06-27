@@ -123,7 +123,7 @@ class MPCC(FresssackController):
         self.arc_trajectory = self.traj_tool.arclength_reparameterize(trajectory)
         self.arc_trajectory_offset = self.arc_trajectory
         self.gate_theta_list, _ = self.traj_tool.find_gate_waypoint(self.arc_trajectory, [gate.pos for gate in self.gates])
-        # self.gate_theta_list[2] -= 0.2
+        self.gate_theta_list[2] -= 0.25
         # self.gate_theta_list = np.array([2.4 , 4.25, 7.1 , 8.6 ])
 
         # build model & create solver
@@ -343,6 +343,7 @@ class MPCC(FresssackController):
         self.tp_list = MX.sym("tp_list", 3*self.model_traj_N)
         self.qc_dyn = MX.sym("qc_dyn", 1*self.model_traj_N)
         self.ql_dyn = MX.sym("ql_dyn", 1*self.model_traj_N)
+        self.gate_interp = MX.sym("gate_interp", 1*self.model_traj_N)
         self.obst_list = MX.sym("obst_list", self.num_ostacles * 3) # 4 * 3 = 12
         self.gate_offset_param = MX.sym("gate_offset_param", 3)
         params = vertcat(
@@ -350,6 +351,7 @@ class MPCC(FresssackController):
             self.tp_list,
             self.qc_dyn,
             self.ql_dyn,
+            self.gate_interp,
             self.obst_list,
             self.gate_offset_param
         )
@@ -436,8 +438,9 @@ class MPCC(FresssackController):
         tp_list = trajectory.derivative(1)(theta_list)
         qc_dyn_list = np.zeros(theta_list.shape[0])
         ql_dyn_list = np.zeros(theta_list.shape[0])
+        gate_interp_list = np.zeros(theta_list.shape[0])
         for idx, gate in enumerate(self.gates):
-            distances = np.linalg.norm(pd_list - gate.pos, axis=-1) # spacial distance
+            # distances = np.linalg.norm(pd_list - gate.pos, axis=-1) # spacial distance
             distances = theta_list - self.gate_theta_list[idx] # progress distance
             qc_dyn_gate_front = np.exp(-distances**2 / (0.5*self.q_c_sigma1[idx])**2) # gaussian
             qc_dyn_gate_behind = np.exp(-distances**2 / (0.5*self.q_c_sigma2[idx])**2) # gaussian
@@ -445,11 +448,16 @@ class MPCC(FresssackController):
                          + self.q_c_peak[idx] * qc_dyn_gate_behind * (theta_list >= self.gate_theta_list[idx])
             ql_dyn_list += qc_dyn_gate_front * (theta_list < self.gate_theta_list[idx]) \
                          + qc_dyn_gate_behind * (theta_list >= self.gate_theta_list[idx])
-        self.ql_dyn_weight = CubicSpline(theta_list, ql_dyn_list)
+            gate_interp_gate_front = np.exp(-distances**2 / (0.5*self.gate_interp_sigma1[idx])**2) # gaussian
+            gate_interp_gate_behind = np.exp(-distances**2 / (0.5*self.gate_interp_sigma2[idx])**2) # gaussian
+            gate_interp_list += gate_interp_gate_front * (theta_list < self.gate_theta_list[idx]) \
+                              + gate_interp_gate_behind * (theta_list >= self.gate_theta_list[idx])
+            
+        self.gate_interp_list = CubicSpline(theta_list, gate_interp_list)
         # import matplotlib.pyplot as plt
         # plt.plot(theta_list, qc_dyn_list)
         # plt.show()
-        p_vals = np.concatenate([pd_list.flatten(), tp_list.flatten(), qc_dyn_list.flatten(), ql_dyn_list.flatten()])
+        p_vals = np.concatenate([pd_list.flatten(), tp_list.flatten(), qc_dyn_list.flatten(), ql_dyn_list.flatten(), gate_interp_list.flatten()])
         return p_vals
     
     
@@ -465,13 +473,14 @@ class MPCC(FresssackController):
         tp_theta = self.casadi_linear_interp(self.theta, theta_list, self.tp_list)
         qc_dyn_theta = self.casadi_linear_interp(self.theta, theta_list, self.qc_dyn, dim=1)
         ql_dyn_theta = self.casadi_linear_interp(self.theta, theta_list, self.ql_dyn, dim=1)
+        gate_interp_theta = self.casadi_linear_interp(self.theta, theta_list, self.gate_interp, dim=1)
         tp_theta_norm = tp_theta / norm_2(tp_theta)
         # apply offset on pd_theta
-        pd_theta_offset = pd_theta + ql_dyn_theta * self.gate_offset_param
+        pd_theta_offset = pd_theta + gate_interp_theta * self.gate_offset_param
         e_theta = pos - pd_theta
         e_l = dot(tp_theta_norm, e_theta) * tp_theta_norm
         # e_c = e_theta - e_l
-        # EXP: handle e_l and e_c separately
+        # NOTE: handle e_l and e_c separately, only e_c on offset trajectory
         e_theta_offset = pos - pd_theta_offset
         e_l_offset = dot(tp_theta_norm, e_theta_offset) * tp_theta_norm
         e_c = e_theta_offset - e_l_offset
@@ -557,11 +566,13 @@ class MPCC(FresssackController):
 
         # MPCC Cost Weights
         self.q_l = 200
-        self.q_l_peak = 650
+        self.q_l_peak = 800
         self.q_c = 80
-        self.q_c_peak = [1000, 1000, 1000, 1000]
-        self.q_c_sigma1 = [0.6, 0.6, 0.6, 0.7]
-        self.q_c_sigma2 = [0.2, 0.2, 0.5, 0.5]
+        self.q_c_peak = [1000, 1000, 1200, 1000]
+        self.q_c_sigma1 = [0.6, 0.6, 0.7, 0.7]
+        self.q_c_sigma2 = [0.1, 0.2, 0.6, 0.5]
+        self.gate_interp_sigma1 = [0.5, 0.5, 0.7, 0.5]
+        self.gate_interp_sigma2 = [0.5, 0.5, 0.7, 0.5]
         self.Q_w = 1 * DM(np.eye(3))
         self.R_df = DM(np.diag([1,0.4,0.4,0.4]))
         self.miu = 0.5
@@ -760,35 +771,31 @@ class MPCC(FresssackController):
         ## update obstacles & write parameters
         if not hasattr(self, "traj_update_gate"):
             self.traj_update_gate = 0
-        # wait a while then reset to norminal trajectory, TODO: smooth transfer based on qc, or better do it in cost function
-        # TODO: handle gate interpolation separately
-        if obs['target_gate'] > self.traj_update_gate and np.linalg.norm(obs['pos'] - obs['gates_pos'][self.traj_update_gate]) > self.q_c_sigma2[self.traj_update_gate]:
+        # wait a while then reset to norminal trajectory
+        if obs['target_gate'] > self.traj_update_gate and self.last_theta - self.gate_theta_list[self.traj_update_gate] > self.gate_interp_sigma2[self.traj_update_gate]:
             self.traj_update_gate = obs['target_gate']
             self.arc_trajectory_offset = self.arc_trajectory
             p_traj = self.get_updated_traj_param(self.arc_trajectory_offset)
             p_obst = self.get_cylinder_param()
-            p_gate_offset = self.get_curr_gate_offset(self.traj_update_gate)
+            p_gate_offset = self.get_curr_gate_offset(self.traj_update_gate, self.gates[self.traj_update_gate].norm_vec)
             p_full = np.concatenate([p_traj, p_obst, p_gate_offset])
             for i in range(self.N):
                 self.acados_ocp_solver.set(i, "p", p_full)
 
-        self.curr_gate_offset = self.get_curr_gate_offset(self.traj_update_gate)
+        self.curr_gate_offset = self.get_curr_gate_offset(self.traj_update_gate, self.gates[self.traj_update_gate].norm_vec)
         need_gate_update, _ = self.update_gate_if_needed(obs)
         need_obs_update, _ = self.update_obstacle_if_needed(obs)
         if need_gate_update or need_obs_update:
             # translate trajectory
-            curr_gate_offset = self.get_curr_gate_offset(self.traj_update_gate)
-            # NOTE: EXP: translate trajectory only on normal plane of gate
-            curr_gate_offset = curr_gate_offset - np.dot(curr_gate_offset, self.gates[self.traj_update_gate].norm_vec) * self.gates[self.traj_update_gate].norm_vec
-            self.arc_trajectory_offset = self.translate_cubicspline(self.arc_trajectory, curr_gate_offset) # only for visualization
             p_traj = self.get_updated_traj_param(self.arc_trajectory)
             p_obst = self.get_cylinder_param()
-            p_gate_offset = self.get_curr_gate_offset(self.traj_update_gate)
+            p_gate_offset = self.get_curr_gate_offset(self.traj_update_gate, self.gates[self.traj_update_gate].norm_vec)
             p_full = np.concatenate([p_traj, p_obst, p_gate_offset])
             for i in range(self.N):
                 self.acados_ocp_solver.set(i, "p", p_full)
-            self.cylinder_list = self._gen_pillar_cylinder() # for now only for visualization
-            self.curr_gate_offset = curr_gate_offset # for now only for visualization
+            self.arc_trajectory_offset = self.translate_cubicspline(self.arc_trajectory, p_gate_offset) # only for visualization
+            self.cylinder_list = self._gen_pillar_cylinder() # only for visualization
+            self.curr_gate_offset = p_gate_offset # only for visualization
         
 
         # set initial state
@@ -859,16 +866,15 @@ class MPCC(FresssackController):
 
         if not hasattr(self, "trajectory_record"):
             self.trajectory_record = []
-        self.trajectory_record.append(self.arc_trajectory(self.last_theta)+self.ql_dyn_weight(self.last_theta)*self.curr_gate_offset)
-        # TODO: check interpolated trajectory
+        self.trajectory_record.append(self.arc_trajectory(self.last_theta)+self.gate_interp_list(self.last_theta)*self.curr_gate_offset)
 
         try:
             draw_line(self.env, self.arc_trajectory(self.arc_trajectory.x), self.hex2rgba("#ffffff84"))
-            draw_line(self.env, np.array(self.trajectory_record[0:-1:2]), rgba=self.hex2rgba("#ff9500da"))
+            draw_line(self.env, np.array(self.trajectory_record), rgba=self.hex2rgba("#ff9500da"))
             # draw_line(self.env, self.arc_trajectory(self.gate_theta_list), rgba=self.hex2rgba("#F209FEFA")) # gate theta
-            draw_line(self.env, self.arc_trajectory_offset(self.arc_trajectory_offset.x[0:-1:2]), rgba=self.hex2rgba("#00ff0d96"))
+            draw_line(self.env, self.arc_trajectory_offset(self.arc_trajectory_offset.x), rgba=self.hex2rgba("#00ff0d96"))
             # draw_line(self.env, np.stack([self.arc_trajectory_offset(self.last_theta), obs["pos"]]), rgba=self.hex2rgba("#002aff55"))
-            draw_line(self.env, pos_traj[0:-1:2],rgba=self.hex2rgba("#ffff00a0"))
+            draw_line(self.env, pos_traj,rgba=self.hex2rgba("#ffff00a0"))
             # obstacles: plot a line from pos to the cylinder when dist < self.d_safe
             for x,y,r in self.cylinder_list:
                 closest = np.array([x,y,obs['pos'][2]])
