@@ -5,7 +5,6 @@ from typing import List, Dict, Tuple, Set, Union, Callable, Optional
 import pandas as pd
 import os
 import atexit
-import copy
 
 LOCAL_MODE = False
 try:
