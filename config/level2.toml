@@ -4,7 +4,7 @@
 # | :-----------------: | :-----------------------: | :-------------------------: | :-------------------: |
 # | `level2.toml`       | **Yes**                   | **Yes**                     | Learning, re-planning |
 [controller]
-file = "mpcc_traj_translation.py" # Put your controller file name here. Specifying a controller as argument to scripts will override this setting. Controllers are located in `lsy_drone_racing/control/`
+file = "easy_controller.py" # Put your controller file name here. Specifying a controller as argument to scripts will override this setting. Controllers are located in `lsy_drone_racing/control/`
 # mpcc mpcc_avoid_collision mpcc_easy_replan mpc_pre_scripted easy_controller mpcc_avoid_collision_new mpcc_traj_translation
 
 [deploy]
@@ -34,7 +34,7 @@ seed = 1337             # Random seed
 freq = 50               # Frequency of the environment's step function, in Hz
 
 sensor_range = 0.5      # Range at which the exact location of gates and obstacles become visible to the drone. Objects that are not in the drone's sensor range report their nominal position.
-control_mode = "attitude"  # Control mode of the environment. Can be either "state" or "attitude"
+control_mode = "state"  # Control mode of the environment. Can be either "state" or "attitude"
 
 
 [env.track]
