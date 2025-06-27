@@ -902,7 +902,8 @@ class FresssackController(Controller):
             return False
     
     def episode_callback(self):
-        self.ego_pose_tx.destroy_node()
+        if ROS_AVAILABLE:
+            self.ego_pose_tx.destroy_node()
         return super().episode_callback()
     
     def trajectory_generate(
