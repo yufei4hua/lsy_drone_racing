@@ -93,6 +93,8 @@ class MPCC(FresssackController):
         # TODO: better trajectory, without 180 turn
         t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/traj_10.csv")
         # t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/test_run_third_gate_modified_lots_of_handcraft.csv")
+        t = t[:-7]
+        pos = pos[:-7]
         trajectory = CubicSpline(t, pos)
 
         # # easy controller trajectory
@@ -567,11 +569,11 @@ class MPCC(FresssackController):
         self.q_l = 200
         self.q_l_peak = 800
         self.q_c = 100
-        self.q_c_peak = [1400, 1450, 1600, 600]
+        self.q_c_peak = [1000, 200, 1600, 600]
         self.q_c_sigma1 = [0.7, 0.6, 1.0, 0.5]
         self.q_c_sigma2 = [0.2, 0.4, 0.6, 0.1]
         self.gate_interp_sigma1 = [0.5, 0.5, 0.9, 0.5]
-        self.gate_interp_sigma2 = [0.3, 0.5, 0.7, 1.5]
+        self.gate_interp_sigma2 = [0.3, 0.6, 0.7, 1.5]
         self.Q_w = 1 * DM(np.eye(3))
         self.R_df = DM(np.diag([1,0.4,0.4,0.4]))
         self.miu = 1
@@ -580,8 +582,8 @@ class MPCC(FresssackController):
         self.d_extend = 0.15 # extend distance to supress q_c
         # velocity bounds
         # TODO: any way to discard lower bound?
-        self.lb_vel = 0.8
-        self.ub_vel = 3.0
+        self.lb_vel = 0.9
+        self.ub_vel = 3.4
 
         
         ocp.model.cost_expr_ext_cost = self.mpcc_cost()
@@ -777,19 +779,21 @@ class MPCC(FresssackController):
             self.arc_trajectory_offset = self.arc_trajectory
             p_traj = self.get_updated_traj_param(self.arc_trajectory_offset)
             p_obst = self.get_cylinder_param()
-            p_gate_offset = self.get_curr_gate_offset(self.traj_update_gate)#, self.gates[self.traj_update_gate].norm_vec)
+            p_gate_offset = self.get_curr_gate_offset(self.traj_update_gate, self.gates[self.traj_update_gate].norm_vec)
             p_full = np.concatenate([p_traj, p_obst, p_gate_offset])
             for i in range(self.N):
                 self.acados_ocp_solver.set(i, "p", p_full)
 
-        self.curr_gate_offset = self.get_curr_gate_offset(self.traj_update_gate)#, self.gates[self.traj_update_gate].norm_vec)
+        self.curr_gate_offset = self.get_curr_gate_offset(self.traj_update_gate, self.gates[self.traj_update_gate].norm_vec)
         need_gate_update, _ = self.update_gate_if_needed(obs)
         need_obs_update, _ = self.update_obstacle_if_needed(obs)
         if need_gate_update or need_obs_update:
+            # recompute gate_theta
+            self.gate_theta_list, _ = self.traj_tool.find_gate_waypoint(self.arc_trajectory, [gate.pos for gate in self.gates])
             # translate trajectory
             p_traj = self.get_updated_traj_param(self.arc_trajectory)
             p_obst = self.get_cylinder_param()
-            p_gate_offset = self.get_curr_gate_offset(self.traj_update_gate)#, self.gates[self.traj_update_gate].norm_vec)
+            p_gate_offset = self.get_curr_gate_offset(self.traj_update_gate, self.gates[self.traj_update_gate].norm_vec)
             p_full = np.concatenate([p_traj, p_obst, p_gate_offset])
             for i in range(self.N):
                 self.acados_ocp_solver.set(i, "p", p_full)
@@ -865,15 +869,19 @@ class MPCC(FresssackController):
             pass
 
         if not hasattr(self, "trajectory_record"):
-            self.trajectory_interp = []
+            self.trajectory_interp = self.arc_trajectory(self.arc_trajectory.x)
             self.trajectory_record = []
-        self.trajectory_interp.append(self.arc_trajectory(self.last_theta)+self.gate_interp_list(self.last_theta)*self.curr_gate_offset)
         self.trajectory_record.append(obs['pos'])
+        if need_gate_update:
+            update_mask = (self.arc_trajectory.x > self.gate_theta_list[self.traj_update_gate] - self.gate_interp_sigma1[self.traj_update_gate]) \
+                        & (self.arc_trajectory.x < self.gate_theta_list[self.traj_update_gate] + self.gate_interp_sigma2[self.traj_update_gate])
+            self.trajectory_interp[update_mask] = self.arc_trajectory(self.arc_trajectory.x[update_mask]) \
+                    + np.tile(self.curr_gate_offset, (sum(update_mask), 1)) * self.gate_interp_list(self.arc_trajectory.x[update_mask])[:, None]
 
         try:
             draw_line(self.env, self.arc_trajectory(self.arc_trajectory.x), self.hex2rgba("#ffffff83")) # original trajectory
             # draw_line(self.env, self.arc_trajectory_offset(self.arc_trajectory_offset.x), rgba=self.hex2rgba("#2b2b2b7d")) # translated trajectory
-            draw_line(self.env, np.array(self.trajectory_interp), rgba=self.hex2rgba("#ff9500da")) # interp trajectory
+            draw_line(self.env, self.trajectory_interp, rgba=self.hex2rgba("#ff9500da")) # interp trajectory
             draw_line(self.env, np.array(self.trajectory_record), rgba=self.hex2rgba("#2BFF00F9")) # recorded trajectory
             # draw_line(self.env, self.arc_trajectory(self.gate_theta_list), rgba=self.hex2rgba("#F209FEFA")) # gate theta
             # draw_line(self.env, np.stack([self.arc_trajectory_offset(self.last_theta), obs["pos"]]), rgba=self.hex2rgba("#002aff55"))
