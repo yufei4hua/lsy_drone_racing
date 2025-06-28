@@ -113,11 +113,11 @@ def simulate(
 
     # Close the environment
     env.close()
-
+    ep_times_all = ep_times
     ep_times = [x for x in ep_times if x is not None]
     print(f"Success Rate: {int(len(ep_times)/n_runs*100)}%")
     print(f"Average Lap Time: {sum(ep_times)/len(ep_times):.2f}")
-    print("Lap Time List:\t|" + '\t|'.join(f"{t:.2f}" for t in ep_times) + '\t|')
+    print("Lap Times:   \t|" + '\t|'.join(f"{t:.2f}" if t is not None else '----' for t in ep_times_all) + '\t|')
     print("Passed Gates:\t|"  + '\t|'.join(f"{int(t)}" for t in passed_gates) + '\t|')
     print("Max Velocity:\t|"  + '\t|'.join(f"{float(t):.2f}" for t in vel_max) + '\t|')
     print("Mean Velocity:\t|" + '\t|'.join(f"{float(t):.2f}" for t in vel_avg) + '\t|')
