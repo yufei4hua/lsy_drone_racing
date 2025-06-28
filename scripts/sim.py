@@ -13,6 +13,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import numpy as np
 import fire
 import gymnasium
 from gymnasium.wrappers.jax_to_numpy import JaxToNumpy
@@ -72,17 +73,22 @@ def simulate(
     env = JaxToNumpy(env)
 
     ep_times = []
+    passed_gates = []
+    vel_max = []
+    vel_avg = []
     for _ in range(n_runs):  # Run n_runs episodes with the controller
         obs, info = env.reset()
         controller: Controller = controller_cls(obs, info, config, env)
         i = 0
         fps = 60
-
+        
+        velocity = []
         while True:
             curr_time = i / config.env.freq
 
             action = controller.compute_control(obs, info)
             obs, reward, terminated, truncated, info = env.step(action)
+            velocity.append(np.linalg.norm(obs["vel"]))
             # Update the controller internal state and models.
             controller_finished = controller.step_callback(
                 action, obs, reward, terminated, truncated, info
@@ -100,9 +106,22 @@ def simulate(
         log_episode_stats(obs, info, config, curr_time)
         controller.episode_reset()
         ep_times.append(curr_time if obs["target_gate"] == -1 else None)
+        passed_gates.append(obs["target_gate"] if obs["target_gate"] >= 0 else 4)
+        vel_max.append(np.max(np.array(velocity)))
+        vel_avg.append(np.mean(np.array(velocity)))
+        print(f"Max Velocity: {vel_max[-1]:.2f}, Mean Velocity: {vel_avg[-1]:.2f}\n\n")
 
     # Close the environment
     env.close()
+
+    ep_times = [x for x in ep_times if x is not None]
+    print(f"Success Rate: {int(len(ep_times)/n_runs*100)}%")
+    print(f"Average Lap Time: {sum(ep_times)/len(ep_times):.2f}")
+    print("Lap Time List:\t|" + '\t|'.join(f"{t:.2f}" for t in ep_times) + '\t|')
+    print("Passed Gates:\t|"  + '\t|'.join(f"{int(t)}" for t in passed_gates) + '\t|')
+    print("Max Velocity:\t|"  + '\t|'.join(f"{float(t):.2f}" for t in vel_max) + '\t|')
+    print("Mean Velocity:\t|" + '\t|'.join(f"{float(t):.2f}" for t in vel_avg) + '\t|')
+
     return ep_times
 
 
