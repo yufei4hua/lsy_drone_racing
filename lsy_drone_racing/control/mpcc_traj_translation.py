@@ -42,7 +42,7 @@ try:
     ROS_AVAILABLE = True
 except:
     ROS_AVAILABLE = False
-ROS_AVAILABLE = False
+# ROS_AVAILABLE = False
 
 
 class MPCC(FresssackController):
@@ -58,13 +58,13 @@ class MPCC(FresssackController):
             config: The configuration of the environment.
         """
         super().__init__(obs, info, config, ros_tx_freq = 20)
-        self.freq = config.env.freq
+        self.freq = config.env.freq 
         self._tick = 0
 
         self.env = env
         self.init_gates(obs=obs,
                         gate_outer_size=[0.8, 0.8, 0.8, 0.8],   # capsule built in between inner & outer
-                        thickness=[0.3, 0.3, 0.3, 0.01],     # thickness of capsule, gaussian cost
+                        thickness=[0.3, 0.3, 0.3, 0.08],     # thickness of capsule, gaussian cost
                         # thickness=[0.2, 0.2, 0.2, 0.2],     # thickness of capsule, gaussian cost
                         )
         # region Cylinder radius
@@ -448,8 +448,8 @@ class MPCC(FresssackController):
                          + self.q_c_peak[idx] * qc_dyn_gate_behind * (theta_list >= self.gate_theta_list[idx])
             ql_dyn_list += qc_dyn_gate_front * (theta_list < self.gate_theta_list[idx]) \
                          + qc_dyn_gate_behind * (theta_list >= self.gate_theta_list[idx])
-            gate_interp_gate_front = np.exp(-distances**2 / (0.5*self.gate_interp_sigma1[idx])**2) # gaussian
-            gate_interp_gate_behind = np.exp(-distances**2 / (0.5*self.gate_interp_sigma2[idx])**2) # gaussian
+            gate_interp_gate_front  = self.gate_interp_peak[idx] * np.exp(-distances**2 / (0.5*self.gate_interp_sigma1[idx])**2) # gaussian
+            gate_interp_gate_behind = self.gate_interp_peak[idx] * np.exp(-distances**2 / (0.5*self.gate_interp_sigma2[idx])**2) # gaussian
             gate_interp_list += gate_interp_gate_front * (theta_list < self.gate_theta_list[idx]) \
                               + gate_interp_gate_behind * (theta_list >= self.gate_theta_list[idx])
             
@@ -569,21 +569,21 @@ class MPCC(FresssackController):
         self.q_l = 200
         self.q_l_peak = 800
         self.q_c = 100
-        self.q_c_peak = [1000, 200, 1600, 600]
+        self.q_c_peak = [1500, 200, 1600, 200]
         self.q_c_sigma1 = [0.7, 0.6, 1.0, 0.5]
-        self.q_c_sigma2 = [0.2, 0.4, 0.6, 0.1]
+        self.q_c_sigma2 = [0.2, 0.4, 0.6, 0.5]
+        self.gate_interp_peak = [1.5, 1.3, 1.2, 1]
         self.gate_interp_sigma1 = [0.5, 0.5, 0.9, 0.5]
         self.gate_interp_sigma2 = [0.3, 0.6, 0.7, 1.5]
-        self.Q_w = 1 * DM(np.eye(3))
+        self.Q_w = 1 * DM(np.diag([1.0, 1.0, 1.0]))
         self.R_df = DM(np.diag([1,0.4,0.4,0.4]))
         self.miu = 1
         # obstacle relavent
         self.obst_w = 40
         self.d_extend = 0.15 # extend distance to supress q_c
         # velocity bounds
-        # TODO: any way to discard lower bound?
-        self.lb_vel = 0.9
-        self.ub_vel = 3.4
+        self.lb_vel = 1.0
+        self.ub_vel = 3.6
 
         
         ocp.model.cost_expr_ext_cost = self.mpcc_cost()
@@ -597,6 +597,8 @@ class MPCC(FresssackController):
         ocp.constraints.lbu = np.array([-10.0, -10.0, -10.0, -10.0, self.lb_vel]) # set a speed lower bound to provide it from stopping at obstacles
         ocp.constraints.ubu = np.array([10.0, 10.0, 10.0, 10.0, self.ub_vel])
         ocp.constraints.idxbu = np.array([0, 1, 2, 3, 4])
+
+        # TODO: EXP: Terminal Cost
 
         # We have to set x0 even though we will overwrite it later on.
         ocp.constraints.x0 = np.zeros((self.nx))
