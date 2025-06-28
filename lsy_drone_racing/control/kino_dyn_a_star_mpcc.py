@@ -9,7 +9,6 @@ Note that the trajectory uses pre-defined waypoints instead of dynamically gener
 
 from __future__ import annotations  # Python 3.10 type hints
 
-from statistics import pvariance
 from typing import TYPE_CHECKING
 LOCAL_MODE = False
 try:
@@ -20,15 +19,10 @@ try:
 except ModuleNotFoundError:
     LOCAL_MODE = False
 import numpy as np
-import scipy
 from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
 from casadi import MX, cos, sin, vertcat, dot, DM, norm_2, floor, if_else
-from scipy.fft import prev_fast_len
 from scipy.interpolate import CubicSpline, BSpline
 from scipy.spatial.transform import Rotation as R
-from casadi import interpolant
-from sympy import true
-from traitlets import TraitError
 
 from lsy_drone_racing.tools.planners.kino_A_star import KinoAStarPlannerConfig, KinoDynamicAStarPlanner
 from lsy_drone_racing.tools.planners.tube_map import TubeMap, PathSegment

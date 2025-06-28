@@ -1,3 +1,4 @@
+from scipy.differentiate import derivative
 from scipy.spatial.transform import Rotation as R
 import numpy as np
 from numpy.typing import NDArray
@@ -49,7 +50,34 @@ class PolynomialTool:
     def quartic_solve_real(a : np.floating, b : np.floating, c : np.floating, d: np.floating, e : np.floating) -> List[np.float64]:
         roots = np.roots(np.array([a,b,c,d,e], dtype = np.float64))
         return [r.real for r in roots if np.isclose(r.imag, 0)]
+class TwoTraj:
+    trajectory_1 : CubicSpline
+    trajectory_2 : CubicSpline
+    offset : np.floating
+    x : NDArray[np.floating]
+
+    def __init__(self, spline_1 : CubicSpline, spline_2 : CubicSpline, offset : np.floating):
+        self.trajectory_1 = spline_1
+        self.trajectory_2 = spline_2
+        self.offset = offset
+
+        self.x = np.concatenate([spline_1.x, spline_2.x + offset])
+
+    def __call__(self, t):
+        if np.isscalar(t):
+            if t < self.offset:
+                return self.trajectory_1(t)
+            else:
+                return self.trajectory_2(t - self.offset)
+        else:
+            return np.array([self(tau) for tau in t])
     
+    def derivative(self, k):
+        derivative_1 = self.trajectory_1.derivative(k)
+        derivative_2 = self.trajectory_2.derivative(k)
+        return TwoTraj(derivative_1, derivative_2, offset = self.offset)
+        
+
 class TrajectoryTool:
 
     def compute_3d_curvature_from_vector_spline(spline: CubicSpline, t_vals: np.ndarray, eps : np.ndarray = 1e-8, positive : bool= True) -> np.ndarray:
@@ -105,7 +133,7 @@ class TrajectoryTool:
             trajectory: CubicSpline object (function)
         """
         # initialize total_length by t_total
-        total_length = trajectory.x[-1]
+        total_length = trajectory.x[-1] - trajectory.x[0]
         for _ in range(99):
             # sample total_length/0.1 waypoints
             t_sample = np.linspace(0, total_length, int(total_length / arc_length))
@@ -120,8 +148,8 @@ class TrajectoryTool:
             trajectory = CubicSpline(t_reallocate, wp_sample)
             # terminal condition
             if np.std(segment_length) <= epsilon:
-                return trajectory
-        return trajectory
+                return CubicSpline(t_reallocate, wp_sample)
+        return CubicSpline(t_reallocate, wp_sample)
             
     def extend_trajectory(self, trajectory: CubicSpline, extend_length:float = 1):
         """takes an arbirary 3D trajectory and extend it in the direction of terminal derivative."""
@@ -129,7 +157,7 @@ class TrajectoryTool:
         delta_theta = min(theta_original[1] - theta_original[0], 0.2)
         # calc last derivative
         p_end = trajectory(theta_original[-1])
-        dp_end = trajectory.derivative(1)(theta_original[-1] - 0.1)
+        dp_end = trajectory.derivative(1)(theta_original[-1])
         dp_end_normalized = dp_end / np.linalg.norm(dp_end)
         # calc extended theta list
         theta_extend = np.arange(theta_original[-1] + delta_theta, theta_original[-1] + extend_length, delta_theta)
@@ -141,6 +169,23 @@ class TrajectoryTool:
         extended_trajectory = CubicSpline(theta_new, p_new, axis=0)
         return extended_trajectory
 
+    def traj_preprocessing(self, t, pos):
+        # 1. find 3rd gate turning point
+        idx_max = 20 + np.argmax(np.array(pos)[20:,1])
+        # 2. split waypoints
+        t = np.array(t)
+        t1 = t[:idx_max+1]
+        pos1 = pos[:idx_max+1]
+        t2 = t[idx_max:] - t[idx_max]
+        pos2 = pos[idx_max:]
+        # 3. generate splines separately
+        trajectory1 = CubicSpline(t1, pos1)
+        trajectory2 = CubicSpline(t2, pos2)
+        # 4. arc length reparameterize
+        arc_trajectory1 = self.arclength_reparameterize(trajectory1)
+        arc_trajectory2 = self.arclength_reparameterize(trajectory2)
+        arc_trajectory1_cut = CubicSpline(arc_trajectory1.x[:-1], arc_trajectory1(arc_trajectory1.x[:-1]))
+        return TwoTraj(arc_trajectory1_cut, arc_trajectory2, arc_trajectory1.x[-1])
             
     def find_nearest_waypoint(
             self, trajectory: CubicSpline, pos: NDArray[np.floating], total_length: float = None, sample_interval:float = 0.05
@@ -165,7 +210,7 @@ class TrajectoryTool:
         return idx_nearest * sample_interval, wp_sample[idx_nearest]
     
     def find_gate_waypoint(
-            self, trajectory: CubicSpline, gates_pos: NDArray[np.floating], total_length: float = None
+            self, trajectory: CubicSpline, gates_pos: NDArray[np.floating], total_length: float = None, sample_interval:float = 0.05
         ):
         """find waypoints of gates center, mainly corresponding indices
 
@@ -179,9 +224,18 @@ class TrajectoryTool:
         indices = []
         gates_wp = []
         for pos in gates_pos:
-            idx, wp = self.find_nearest_waypoint(trajectory, pos, total_length)
+            idx, wp = self.find_nearest_waypoint(trajectory, pos, total_length, sample_interval)
             indices.append(idx)
             gates_wp.append(wp)
+        # NOTE: specially handle 3rd gate, find largest y as gate point
+        total_length = trajectory.x[-1]
+        t_sample = np.arange(0, total_length, sample_interval)
+        wp_sample = trajectory(t_sample)
+        # find waypoint with largest y
+        start_idx2 = int((indices[2]-1.0)//sample_interval)
+        idx2 = start_idx2 + np.argmax(wp_sample[start_idx2:, 1]-wp_sample[start_idx2:, 2])
+        gates_wp[2] = wp_sample[idx2]
+        indices[2] = idx2 * sample_interval
         return np.array(indices), np.array(gates_wp)
 
 class GeometryTool:
