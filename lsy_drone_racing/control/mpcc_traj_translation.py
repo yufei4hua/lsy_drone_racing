@@ -69,7 +69,7 @@ class MPCC(FresssackController):
                         )
         # region Cylinder radius
         self.init_obstacles(obs=obs, 
-                            obs_safe_radius=[0.25, 0.25, 0.3, 0.10])#[0.3, 0.3, 0.3, 0.3])
+                            obs_safe_radius=[0.25, 0.20, 0.28, 0.10])#[0.3, 0.3, 0.3, 0.3])
         
         # # Demo waypoints
         # waypoints = np.array(
@@ -91,7 +91,7 @@ class MPCC(FresssackController):
         # region Trajectory
         # pre-planned trajectory
         # TODO: better trajectory, without 180 turn
-        t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/traj_10_k.csv")
+        t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/traj_11.csv")
         # t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/test_run_third_gate_modified_lots_of_handcraft.csv")
         trajectory = CubicSpline(t, pos)
 
@@ -442,14 +442,14 @@ class MPCC(FresssackController):
             distances = theta_list - self.gate_theta_list[idx] # progress distance
             qc_dyn_gate_front = np.exp(-distances**2 / (0.5*self.q_c_sigma1[idx])**2) # gaussian
             qc_dyn_gate_behind = np.exp(-distances**2 / (0.5*self.q_c_sigma2[idx])**2) # gaussian
-            qc_dyn_list += self.q_c_peak[idx] * qc_dyn_gate_front * (theta_list < self.gate_theta_list[idx]) \
-                         + self.q_c_peak[idx] * qc_dyn_gate_behind * (theta_list >= self.gate_theta_list[idx])
-            ql_dyn_list += qc_dyn_gate_front * (theta_list < self.gate_theta_list[idx]) \
-                         + qc_dyn_gate_behind * (theta_list >= self.gate_theta_list[idx])
+            qc_dyn_list += self.q_c_peak[idx] * qc_dyn_gate_front * ((theta_list < self.gate_theta_list[idx]) & (theta_list > self.gate_theta_list[idx] - self.q_c_sigma1[idx])) \
+                         + self.q_c_peak[idx] * qc_dyn_gate_behind * ((theta_list >= self.gate_theta_list[idx]) & (theta_list < self.gate_theta_list[idx] + self.q_c_sigma2[idx]))
+            ql_dyn_list += self.q_l_peak[idx] * qc_dyn_gate_front * ((theta_list < self.gate_theta_list[idx]) & (theta_list > self.gate_theta_list[idx] - self.q_c_sigma1[idx])) \
+                         + self.q_l_peak[idx] * qc_dyn_gate_behind * ((theta_list >= self.gate_theta_list[idx]) & (theta_list < self.gate_theta_list[idx] + self.q_c_sigma2[idx]))
             gate_interp_gate_front  = self.gate_interp_peak[idx] * np.exp(-distances**2 / (0.5*self.gate_interp_sigma1[idx])**2) # gaussian
             gate_interp_gate_behind = self.gate_interp_peak[idx] * np.exp(-distances**2 / (0.5*self.gate_interp_sigma2[idx])**2) # gaussian
-            gate_interp_list += gate_interp_gate_front * (theta_list < self.gate_theta_list[idx]) \
-                              + gate_interp_gate_behind * (theta_list >= self.gate_theta_list[idx])
+            gate_interp_list += gate_interp_gate_front * ((theta_list < self.gate_theta_list[idx]) & (theta_list > self.gate_theta_list[idx] - self.gate_interp_sigma1[idx])) \
+                              + gate_interp_gate_behind * ((theta_list >= self.gate_theta_list[idx]) & (theta_list < self.gate_theta_list[idx] + self.gate_interp_sigma2[idx]))
             
         self.gate_interp_list = CubicSpline(theta_list, gate_interp_list)
         # import matplotlib.pyplot as plt
@@ -497,11 +497,11 @@ class MPCC(FresssackController):
             dis = self.calc_obst_distance(pos, cyl_xy)
             obst_cost += exp( -power(dis/(0.5*cyl_r), 2) )
 
-        q_c_factor = 1 - 0.1 * q_c_supress  # supress q_c based on trajectory collision
+        q_c_factor = 1 - 0.6 * q_c_supress  # supress q_c based on trajectory collision
         miu_factor = 1 - 0.9 * q_c_supress  # supress miu 
 
         # Break down the costs
-        C_l = self.q_l + self.q_l_peak * ql_dyn_theta
+        C_l = self.q_l + ql_dyn_theta
         e_l_cost = dot(e_l, e_l)
         cost_l = C_l * e_l_cost
 
@@ -565,14 +565,14 @@ class MPCC(FresssackController):
 
         # MPCC Cost Weights
         self.q_l = 200
-        self.q_l_peak = 800
+        self.q_l_peak = [800, 800, 800, 1000]
         self.q_c = 100
-        self.q_c_peak = [1500, 1400, 1700, 1400]
-        self.q_c_sigma1 = [1.0, 0.6, 1.1, 0.6]
-        self.q_c_sigma2 = [0.5, 0.8, 0.5, 0.1] 
-        self.gate_interp_peak = [1.2, 1.4, 1.2, 1.1]
+        self.q_c_peak = [800, 1000, 1600, 1300]
+        self.q_c_sigma1 = [1.0, 0.6, 1.1, 0.7]
+        self.q_c_sigma2 = [0.6, 0.6, 0.6, 0.1] 
+        self.gate_interp_peak = [1.2, 1.3, 1.19, 1.2]
         self.gate_interp_sigma1 = [0.5, 0.5, 0.9, 0.5]
-        self.gate_interp_sigma2 = [0.3, 0.8, 0.7, 1.5]
+        self.gate_interp_sigma2 = [0.3, 0.8, 0.8, 2.0]
         self.Q_w = 1 * DM(np.diag([1.0, 1.0, 1.0]))
         self.R_df = DM(np.diag([1,0.4,0.4,0.4]))
         self.miu = 1
