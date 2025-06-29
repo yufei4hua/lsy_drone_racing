@@ -100,8 +100,7 @@ solver_param_dict : Dict[str, Union[List[np.floating], np.floating]] = {
     'ub_vel':3.4,
 }
 
-solver_wrapper : FresssackMPCC = FresssackMPCC(param_dict = solver_param_dict)
-
+our_mpcc : FresssackMPCC = FresssackMPCC(param_dict = solver_param_dict)
 
 
 class MPCC(FresssackController):
@@ -130,24 +129,25 @@ class MPCC(FresssackController):
         self.init_obstacles(obs=obs, 
                             obs_safe_radius=[0.25, 0.25, 0.3, 0.10])#[0.3, 0.3, 0.3, 0.3])
         
+
         # build model & create solver
-        self.solver_wrapper = solver_wrapper
-        self.solver_wrapper.reset_solver()
-        self.acados_ocp_solver = self.solver_wrapper.solver
+        self.our_mpcc = our_mpcc
+        self.our_mpcc.reset_solver()
+        self.acados_ocp_solver = self.our_mpcc.solver
         
       
         # region Global params
-        self.dt = self.solver_wrapper.T_f / self.solver_wrapper.N
+        self.dt = self.our_mpcc.T_f / self.our_mpcc.N
         # self.gates_norm_list = [gate.norm_vec for gate in self.gates] # 4 * 3 = 12
 
         # initialize ros tx
         self.init_ros_tx()
         
         # initialize debug function for MPC
-        cost_dict = self.solver_wrapper.mpcc_cost_components()
+        cost_dict = self.our_mpcc.mpcc_cost_components()
         self.cost_func_debug = Function(
             'mpcc_cost_debug',
-            [self.solver_wrapper.model_syms.x, self.solver_wrapper.model_syms.u, self.solver_wrapper.model_syms.p],
+            [self.our_mpcc.model_syms.x, self.our_mpcc.model_syms.u, self.our_mpcc.model_syms.p],
             [cost_dict[k] for k in cost_dict],
             ['x', 'u', 'p'],
             list(cost_dict.keys()
@@ -200,7 +200,7 @@ class MPCC(FresssackController):
             )
         )
 
-        x_result, u_result, p_result, success = self.solver_wrapper.control_step(x = xcurrent,
+        x_result, u_result, p_result, success = self.our_mpcc.control_step(x = xcurrent,
                                                                         last_theta = self.last_theta,
                                                                         need_gate_update = need_gate_update,
                                                                         need_obs_update = need_obs_update,
@@ -209,7 +209,7 @@ class MPCC(FresssackController):
                                                                         obstacles = self.obstacles)
         if not success:
             self.fail_counter += 1
-            if self.fail_counter * self.dt > 0.4:
+            if self.fail_counter * self.dt > 0.3:
                 self.finished = True
                 print("Solver failure force quit")
         else:
@@ -241,14 +241,14 @@ class MPCC(FresssackController):
 
         # Calculate costs every steps for tuning
         debug_costs : Dict[str, List[np.floating]] = {key : [] for key in self.mpc_costs_tx_keys}
-        for i in range(self.solver_wrapper.N):
+        for i in range(self.our_mpcc.N):
             result = self.cost_func_debug(x_result[i], u_result[i], p_result[i])
             for idx, value in enumerate(result):
                 debug_costs[self.mpc_costs_tx_keys[idx]].append(float(value))
 
 
         #region Visualization
-        pos_traj = np.array([x_result[i][:3] for i in range(self.solver_wrapper.N+1)])
+        pos_traj = np.array([x_result[i][:3] for i in range(self.our_mpcc.N+1)])
         if self.need_ros_tx():
             # TODO: uncomment it if visualization is needed in rviz
             # self.mpcc_traj_tx.publish(
@@ -264,18 +264,18 @@ class MPCC(FresssackController):
             pass
 
         if not hasattr(self, "trajectory_record"):
-            self.trajectory_interp = self.solver_wrapper.arc_trajectory(self.solver_wrapper.arc_trajectory.x)
+            self.trajectory_interp = self.our_mpcc.arc_trajectory(self.our_mpcc.arc_trajectory.x)
             self.trajectory_record = []
         self.trajectory_record.append(self.pos)
         if need_gate_update:
-            update_mask = (self.solver_wrapper.arc_trajectory.x > self.solver_wrapper.gate_theta_list[self.solver_wrapper.traj_update_gate] - self.solver_wrapper.gate_interp_sigma1[self.solver_wrapper.traj_update_gate]) \
-                        & (self.solver_wrapper.arc_trajectory.x < self.solver_wrapper.gate_theta_list[self.solver_wrapper.traj_update_gate] + self.solver_wrapper.gate_interp_sigma2[self.solver_wrapper.traj_update_gate])
-            self.trajectory_interp[update_mask] = self.solver_wrapper.arc_trajectory(self.solver_wrapper.arc_trajectory.x[update_mask]) \
-                    + np.tile(self.solver_wrapper.curr_gate_offset, (sum(update_mask), 1)) * self.solver_wrapper.gate_interp_list(self.solver_wrapper.arc_trajectory.x[update_mask])[:, None]
+            update_mask = (self.our_mpcc.arc_trajectory.x > self.our_mpcc.gate_theta_list[self.our_mpcc.traj_update_gate] - self.our_mpcc.gate_interp_sigma1[self.our_mpcc.traj_update_gate]) \
+                        & (self.our_mpcc.arc_trajectory.x < self.our_mpcc.gate_theta_list[self.our_mpcc.traj_update_gate] + self.our_mpcc.gate_interp_sigma2[self.our_mpcc.traj_update_gate])
+            self.trajectory_interp[update_mask] = self.our_mpcc.arc_trajectory(self.our_mpcc.arc_trajectory.x[update_mask]) \
+                    + np.tile(self.our_mpcc.curr_gate_offset, (sum(update_mask), 1)) * self.our_mpcc.gate_interp_list(self.our_mpcc.arc_trajectory.x[update_mask])[:, None]
 
         try:
 
-            draw_line(self.env, self.solver_wrapper.arc_trajectory(self.solver_wrapper.arc_trajectory.x), self.hex2rgba("#ffffff83")) # original trajectory
+            draw_line(self.env, self.our_mpcc.arc_trajectory(self.our_mpcc.arc_trajectory.x), self.hex2rgba("#ffffff83")) # original trajectory
             # draw_line(self.env, self.arc_trajectory_offset(self.arc_trajectory_offset.x), rgba=self.hex2rgba("#2b2b2b7d")) # translated trajectory
             draw_line(self.env, self.trajectory_interp, rgba=self.hex2rgba("#ff9500da")) # interp trajectory
             draw_line(self.env, np.array(self.trajectory_record), rgba=self.hex2rgba("#2BFF00F9")) # recorded trajectory
@@ -285,11 +285,11 @@ class MPCC(FresssackController):
             
             
             # obstacles: plot a line from pos to the cylinder when dist < self.d_safe
-            if self.solver_wrapper.cylinder_list is not None:
-                for x,y,r in self.solver_wrapper.cylinder_list:
+            if self.our_mpcc.cylinder_list is not None:
+                for x,y,r in self.our_mpcc.cylinder_list:
                     closest = np.array([x,y,self.pos[2]])
                     dist = np.linalg.norm(self.pos - closest) - r
-                    if dist < self.solver_wrapper.d_extend:
+                    if dist < self.our_mpcc.d_extend:
                         draw_line(self.env, np.stack([self.pos, closest]), rgba=np.array([0.8, 0.0, 1.0, 0.3]))
         except:
             pass
