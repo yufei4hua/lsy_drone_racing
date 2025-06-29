@@ -47,7 +47,7 @@ ROS_AVAILABLE = False
 
 solver_param_dict : Dict[str, Union[List[np.floating], np.floating]] = {
 
-    'traj_path' : r"lsy_drone_racing/planned_trajectories/traj_10.csv",
+    'traj_path' : r"lsy_drone_racing/planned_trajectories/traj_11.csv",
 
     'starting_pos' : [1.0, 1.5, 0.07],
 
@@ -60,8 +60,8 @@ solver_param_dict : Dict[str, Union[List[np.floating], np.floating]] = {
     ],
     'obstacles' : [
         Obstacle(pos = np.array([1.0, 0.0, 1.4]), safe_radius = 0.25),
-        Obstacle(pos = np.array([0.5, -1.0, 1.4]), safe_radius = 0.25),
-        Obstacle(pos = np.array([0.0, 1.5, 1.4]), safe_radius = 0.3),
+        Obstacle(pos = np.array([0.5, -1.0, 1.4]), safe_radius = 0.20),
+        Obstacle(pos = np.array([0.0, 1.5, 1.4]), safe_radius = 0.28),
         Obstacle(pos = np.array([-0.5, 0.5, 1.4]), safe_radius = 0.1),
 
     ],
@@ -81,23 +81,24 @@ solver_param_dict : Dict[str, Union[List[np.floating], np.floating]] = {
 
     'model_arc_length' : 0.05,
     'model_traj_length' : 12,
-    'model_traj_end' : 10.0,
+    'model_traj_end' : 9.0,
 
     'q_l' : 200,
-    'q_l_peak' : 800,
+    'q_l_peak' : [800, 800, 800, 1000],
     'q_c':100,
-    'q_c_peak':[1000, 200, 1600, 600],
-    'q_c_sigma1':[0.7, 0.6, 1.0, 0.5],
-    'q_c_sigma2':[0.5, 0.4, 0.6, 0.1],
+    'q_c_peak':[800, 1000, 1600, 1300],
+    'q_c_sigma1':[1.0, 0.6, 1.1, 0.7],
+    'q_c_sigma2':[0.6, 0.6, 0.6, 0.1],
+    'gate_interp_peak':[1.2, 1.3, 1.19, 1.2],
     'gate_interp_sigma1': [0.5, 0.5, 0.9, 0.5],
-    'gate_interp_sigma2':[0.3, 0.6, 0.7, 1.5],
+    'gate_interp_sigma2':[0.3, 0.8, 0.8, 2.0],
     'Q_w':1 * DM(np.eye(3)),
     'R_df':DM(np.diag([1,0.4,0.4,0.4])),
     'miu':1,
-    'obst_w':40,
+    'obst_w':41,
     'd_extend':0.15,
-    'lb_vel': 0.9,
-    'ub_vel':3.4,
+    'lb_vel': 0.92,
+    'ub_vel':3.9,
 }
 
 our_mpcc : FresssackMPCC = FresssackMPCC(param_dict = solver_param_dict)
@@ -209,7 +210,7 @@ class MPCC(FresssackController):
                                                                         obstacles = self.obstacles)
         if not success:
             self.fail_counter += 1
-            if self.fail_counter * self.dt > 0.3:
+            if self.fail_counter * self.dt > 0.5:
                 self.finished = True
                 print("Solver failure force quit")
         else:
@@ -275,7 +276,7 @@ class MPCC(FresssackController):
 
         try:
 
-            draw_line(self.env, self.our_mpcc.arc_trajectory(self.our_mpcc.arc_trajectory.x), self.hex2rgba("#ffffff83")) # original trajectory
+            draw_line(self.env, self.our_mpcc.arc_trajectory(self.our_mpcc.arc_trajectory.x), self.hex2rgba("#ffffff0f")) # original trajectory
             # draw_line(self.env, self.arc_trajectory_offset(self.arc_trajectory_offset.x), rgba=self.hex2rgba("#2b2b2b7d")) # translated trajectory
             draw_line(self.env, self.trajectory_interp, rgba=self.hex2rgba("#ff9500da")) # interp trajectory
             draw_line(self.env, np.array(self.trajectory_record), rgba=self.hex2rgba("#2BFF00F9")) # recorded trajectory

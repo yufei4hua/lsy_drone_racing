@@ -120,6 +120,7 @@ class FresssackMPCC:
         self.q_c_peak = param_dict['q_c_peak']
         self.q_c_sigma1 = param_dict['q_c_sigma1']
         self.q_c_sigma2 = param_dict['q_c_sigma2']
+        self.gate_interp_peak = param_dict['gate_interp_peak']
         self.gate_interp_sigma1 = param_dict['gate_interp_sigma1']
         self.gate_interp_sigma2 = param_dict['gate_interp_sigma2']
         self.Q_w = param_dict['Q_w']
@@ -277,10 +278,6 @@ class FresssackMPCC:
     def read_traj(self, path : str):
         t, pos, vel = FresssackController.read_trajectory(path)
 
-        # TODO: This should not be HERE
-        t = t[:-7]
-        pos = pos[:-7]
-
         trajectory = CubicSpline(t, pos)
 
         # trajectory reparameterization
@@ -392,14 +389,14 @@ class FresssackMPCC:
             distances = theta_list - self.gate_theta_list_offset[idx] # progress distance
             qc_dyn_gate_front = np.exp(-distances**2 / (0.5*self.q_c_sigma1[idx])**2) # gaussian
             qc_dyn_gate_behind = np.exp(-distances**2 / (0.5*self.q_c_sigma2[idx])**2) # gaussian
-            qc_dyn_list += self.q_c_peak[idx] * qc_dyn_gate_front * (theta_list < self.gate_theta_list_offset[idx]) \
-                         + self.q_c_peak[idx] * qc_dyn_gate_behind * (theta_list >= self.gate_theta_list_offset[idx])
-            ql_dyn_list += qc_dyn_gate_front * (theta_list < self.gate_theta_list_offset[idx]) \
-                         + qc_dyn_gate_behind * (theta_list >= self.gate_theta_list_offset[idx])
-            gate_interp_gate_front = np.exp(-distances**2 / (0.5*self.gate_interp_sigma1[idx])**2) # gaussian
-            gate_interp_gate_behind = np.exp(-distances**2 / (0.5*self.gate_interp_sigma2[idx])**2) # gaussian
-            gate_interp_list += gate_interp_gate_front * (theta_list < self.gate_theta_list_offset[idx]) \
-                              + gate_interp_gate_behind * (theta_list >= self.gate_theta_list_offset[idx])
+            qc_dyn_list += self.q_c_peak[idx] * qc_dyn_gate_front * ((theta_list < self.gate_theta_list_offset[idx]) & (theta_list > self.gate_theta_list_offset[idx] - self.q_c_sigma1[idx])) \
+                         + self.q_c_peak[idx] * qc_dyn_gate_behind * ((theta_list >= self.gate_theta_list_offset[idx]) & (theta_list < self.gate_theta_list_offset[idx] + self.q_c_sigma2[idx]))
+            ql_dyn_list += self.q_l_peak[idx] * qc_dyn_gate_front * ((theta_list < self.gate_theta_list_offset[idx]) & (theta_list > self.gate_theta_list_offset[idx] - self.q_c_sigma1[idx])) \
+                         + self.q_l_peak[idx] * qc_dyn_gate_behind * ((theta_list >= self.gate_theta_list_offset[idx]) & (theta_list < self.gate_theta_list_offset[idx] + self.q_c_sigma2[idx]))
+            gate_interp_gate_front  = self.gate_interp_peak[idx] * np.exp(-distances**2 / (0.5*self.gate_interp_sigma1[idx])**2) # gaussian
+            gate_interp_gate_behind = self.gate_interp_peak[idx] * np.exp(-distances**2 / (0.5*self.gate_interp_sigma2[idx])**2) # gaussian
+            gate_interp_list += gate_interp_gate_front * ((theta_list < self.gate_theta_list_offset[idx]) & (theta_list > self.gate_theta_list_offset[idx] - self.gate_interp_sigma1[idx])) \
+                              + gate_interp_gate_behind * ((theta_list >= self.gate_theta_list_offset[idx]) & (theta_list < self.gate_theta_list_offset[idx] + self.gate_interp_sigma2[idx]))
             
         self.gate_interp_list = CubicSpline(theta_list, gate_interp_list)
         p_vals = np.concatenate([pd_list.flatten(), tp_list.flatten(), qc_dyn_list.flatten(), ql_dyn_list.flatten(), gate_interp_list.flatten()])
@@ -503,9 +500,9 @@ class FresssackMPCC:
         miu_factor = 1 - 0.9 * q_c_supress  # supress miu 
 
         # Break down the costs
-        C_l = self.q_l + self.q_l_peak * ql_dyn_theta
+        C_l = self.q_l + ql_dyn_theta
         e_l_cost = dot(e_l, e_l)
-        cost_l = C_l * e_l_cost
+        cost_l = C_l * q_c_factor * e_l_cost
 
         C_c = self.q_c + qc_dyn_theta
         e_c_cost = dot(e_c, e_c)
