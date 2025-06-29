@@ -42,7 +42,7 @@ try:
     ROS_AVAILABLE = True
 except:
     ROS_AVAILABLE = False
-ROS_AVAILABLE = False
+# ROS_AVAILABLE = False
 
 
 class MPCC(FresssackController):
@@ -57,14 +57,14 @@ class MPCC(FresssackController):
             info: Additional environment information from the reset.
             config: The configuration of the environment.
         """
-        super().__init__(obs, info, config, ros_tx_freq = 20)
-        self.freq = config.env.freq
+        super().__init__(obs, info, config, ros_tx_freq = None)
+        self.freq = config.env.freq 
         self._tick = 0
 
         self.env = env
         self.init_gates(obs=obs,
                         gate_outer_size=[0.8, 0.8, 0.8, 0.8],   # capsule built in between inner & outer
-                        thickness=[0.3, 0.3, 0.3, 0.01],     # thickness of capsule, gaussian cost
+                        thickness=[0.3, 0.2, 0.3, 0.15],     # thickness of capsule, gaussian cost
                         # thickness=[0.2, 0.2, 0.2, 0.2],     # thickness of capsule, gaussian cost
                         )
         # region Cylinder radius
@@ -91,10 +91,8 @@ class MPCC(FresssackController):
         # region Trajectory
         # pre-planned trajectory
         # TODO: better trajectory, without 180 turn
-        t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/traj_10.csv")
+        t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/traj_10_k.csv")
         # t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/test_run_third_gate_modified_lots_of_handcraft.csv")
-        t = t[:-7]
-        pos = pos[:-7]
         trajectory = CubicSpline(t, pos)
 
         # # easy controller trajectory
@@ -448,8 +446,8 @@ class MPCC(FresssackController):
                          + self.q_c_peak[idx] * qc_dyn_gate_behind * (theta_list >= self.gate_theta_list[idx])
             ql_dyn_list += qc_dyn_gate_front * (theta_list < self.gate_theta_list[idx]) \
                          + qc_dyn_gate_behind * (theta_list >= self.gate_theta_list[idx])
-            gate_interp_gate_front = np.exp(-distances**2 / (0.5*self.gate_interp_sigma1[idx])**2) # gaussian
-            gate_interp_gate_behind = np.exp(-distances**2 / (0.5*self.gate_interp_sigma2[idx])**2) # gaussian
+            gate_interp_gate_front  = self.gate_interp_peak[idx] * np.exp(-distances**2 / (0.5*self.gate_interp_sigma1[idx])**2) # gaussian
+            gate_interp_gate_behind = self.gate_interp_peak[idx] * np.exp(-distances**2 / (0.5*self.gate_interp_sigma2[idx])**2) # gaussian
             gate_interp_list += gate_interp_gate_front * (theta_list < self.gate_theta_list[idx]) \
                               + gate_interp_gate_behind * (theta_list >= self.gate_theta_list[idx])
             
@@ -499,7 +497,7 @@ class MPCC(FresssackController):
             dis = self.calc_obst_distance(pos, cyl_xy)
             obst_cost += exp( -power(dis/(0.5*cyl_r), 2) )
 
-        q_c_factor = 1 - 0.6 * q_c_supress  # supress q_c based on trajectory collision
+        q_c_factor = 1 - 0.1 * q_c_supress  # supress q_c based on trajectory collision
         miu_factor = 1 - 0.9 * q_c_supress  # supress miu 
 
         # Break down the costs
@@ -509,7 +507,7 @@ class MPCC(FresssackController):
 
         C_c = self.q_c + qc_dyn_theta
         e_c_cost = dot(e_c, e_c)
-        cost_c = C_c * e_c_cost
+        cost_c = C_c * q_c_factor * e_c_cost
 
         ang_cost = ang.T @ self.Q_w @ ang
         ctrl_cost = control_input.T @ self.R_df @ control_input
@@ -569,21 +567,21 @@ class MPCC(FresssackController):
         self.q_l = 200
         self.q_l_peak = 800
         self.q_c = 100
-        self.q_c_peak = [1000, 200, 1600, 600]
-        self.q_c_sigma1 = [0.7, 0.6, 1.0, 0.5]
-        self.q_c_sigma2 = [0.2, 0.4, 0.6, 0.1]
+        self.q_c_peak = [1500, 1400, 1700, 1400]
+        self.q_c_sigma1 = [1.0, 0.6, 1.1, 0.6]
+        self.q_c_sigma2 = [0.5, 0.8, 0.5, 0.1] 
+        self.gate_interp_peak = [1.2, 1.4, 1.2, 1.1]
         self.gate_interp_sigma1 = [0.5, 0.5, 0.9, 0.5]
-        self.gate_interp_sigma2 = [0.3, 0.6, 0.7, 1.5]
-        self.Q_w = 1 * DM(np.eye(3))
+        self.gate_interp_sigma2 = [0.3, 0.8, 0.7, 1.5]
+        self.Q_w = 1 * DM(np.diag([1.0, 1.0, 1.0]))
         self.R_df = DM(np.diag([1,0.4,0.4,0.4]))
         self.miu = 1
         # obstacle relavent
-        self.obst_w = 40
+        self.obst_w = 41
         self.d_extend = 0.15 # extend distance to supress q_c
         # velocity bounds
-        # TODO: any way to discard lower bound?
-        self.lb_vel = 0.9
-        self.ub_vel = 3.4
+        self.lb_vel = 0.92
+        self.ub_vel = 3.9
 
         
         ocp.model.cost_expr_ext_cost = self.mpcc_cost()
@@ -597,6 +595,8 @@ class MPCC(FresssackController):
         ocp.constraints.lbu = np.array([-10.0, -10.0, -10.0, -10.0, self.lb_vel]) # set a speed lower bound to provide it from stopping at obstacles
         ocp.constraints.ubu = np.array([10.0, 10.0, 10.0, 10.0, self.ub_vel])
         ocp.constraints.idxbu = np.array([0, 1, 2, 3, 4])
+
+        # TODO: EXP: Terminal Cost
 
         # We have to set x0 even though we will overwrite it later on.
         ocp.constraints.x0 = np.zeros((self.nx))
@@ -828,6 +828,7 @@ class MPCC(FresssackController):
         ## update initial guess
         self.x_guess = x_result
         self.u_guess = u_result
+        # print(self.u_guess[1][-1]) # print predicted velocity
 
         # x1 = self.acados_ocp_solver.get(1, "x")
         x1 = x_result[1]
