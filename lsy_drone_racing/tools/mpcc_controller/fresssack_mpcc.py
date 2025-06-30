@@ -199,9 +199,9 @@ class FresssackMPCC:
             self.x_guess = [x for _ in range(self.N + 1)]
             self.u_guess = [np.zeros(self.n_u) for _ in range(self.N)]
         else:
-            pass
             # self.x_guess = self.x_guess[1:] + [self.x_guess[-1]]
             # self.u_guess = self.u_guess[1:] + [self.u_guess[-1]]
+            pass
         
         # Set guess
         for i in range(self.N):
@@ -247,7 +247,9 @@ class FresssackMPCC:
         self.solver.set(0, "ubx", x)
 
         # Solve for solution
-        success = (self.solver.solve() != 4)
+        status = self.solver.solve()
+        qp_iter = self.solver.get_stats("qp_iter")[1]
+        success = (status == 0) or (qp_iter >= 10) 
 
         if not success:
             x_result = self.x_guess
