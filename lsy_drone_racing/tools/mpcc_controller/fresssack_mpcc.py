@@ -59,6 +59,7 @@ class FresssackMPCC:
     q_c_peak:List[np.floating]
     q_c_sigma1:List[np.floating]
     q_c_sigma2:List[np.floating]
+    gate_interp_peak : List[np.floating]
     gate_interp_sigma1:List[np.floating]
     gate_interp_sigma2:List[np.floating]
     Q_w:DM
@@ -247,8 +248,11 @@ class FresssackMPCC:
         self.solver.set(0, "ubx", x)
 
         # Solve for solution
-        success = (self.solver.solve() != 4)
-
+        
+        status = self.solver.solve()
+        qp_iter = self.solver.get_stats("qp_iter")[1]
+        success = (status == 0) or (qp_iter >= 10)
+        
         if not success:
             x_result = self.x_guess
             u_result = self.u_guess
