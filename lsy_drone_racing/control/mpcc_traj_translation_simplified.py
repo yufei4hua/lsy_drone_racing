@@ -47,7 +47,7 @@ ROS_AVAILABLE = False
 
 solver_param_dict : Dict[str, Union[List[np.floating], np.floating]] = {
 
-    'traj_path' : r"lsy_drone_racing/planned_trajectories/traj_11.csv",
+    'traj_path' : r"lsy_drone_racing/planned_trajectories/traj_20.csv",
 
     'starting_pos' : [1.0, 1.5, 0.07],
 
@@ -62,7 +62,7 @@ solver_param_dict : Dict[str, Union[List[np.floating], np.floating]] = {
         Obstacle(pos = np.array([1.0, 0.0, 1.4]), safe_radius = 0.25),
         Obstacle(pos = np.array([0.5, -1.0, 1.4]), safe_radius = 0.20),
         Obstacle(pos = np.array([0.0, 1.5, 1.4]), safe_radius = 0.28),
-        Obstacle(pos = np.array([-0.5, 0.5, 1.4]), safe_radius = 0.1),
+        Obstacle(pos = np.array([-0.5, 0.5, 1.4]), safe_radius = 0.15),
 
     ],
 
@@ -84,14 +84,14 @@ solver_param_dict : Dict[str, Union[List[np.floating], np.floating]] = {
     'model_traj_end' : 9.0,
 
     'q_l' : 200,
-    'q_l_peak' : [800, 800, 800, 1000],
+    'q_l_peak' : [800, 800, 800, 1600],
     'q_c':100,
-    'q_c_peak':[800, 900, 1600, 1200],
-    'q_c_sigma1':[1.0, 0.6, 1.1, 0.7],
-    'q_c_sigma2':[0.6, 0.5, 0.6, 0.1],
-    'gate_interp_peak':[1.2, 1.3, 1.19, 1.2],
+    'q_c_peak':[900, 1100, 1600, 1900],
+    'q_c_sigma1':[1.1, 0.8, 1.1, 0.8],
+    'q_c_sigma2':[0.5, 0.5, 0.6, 0.1],
+    'gate_interp_peak':[1.2, 1.4, 1.1, 1.8],
     'gate_interp_sigma1': [0.5, 0.5, 0.9, 0.5],
-    'gate_interp_sigma2':[0.3, 0.8, 0.8, 2.0],
+    'gate_interp_sigma2':[0.4, 0.8, 0.8, 10.0],
     'Q_w':1 * DM(np.eye(3)),
     'R_df':DM(np.diag([1,0.4,0.4,0.4])),
     'miu':1,
