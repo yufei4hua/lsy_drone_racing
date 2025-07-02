@@ -269,8 +269,8 @@ class MPCC(FresssackController):
             self.trajectory_record = []
         self.trajectory_record.append(self.pos)
         if need_gate_update:
-            update_mask = (self.our_mpcc.arc_trajectory.x > self.our_mpcc.gate_theta_list[self.our_mpcc.traj_update_gate] - self.our_mpcc.gate_interp_sigma1[self.our_mpcc.traj_update_gate]) \
-                        & (self.our_mpcc.arc_trajectory.x < self.our_mpcc.gate_theta_list[self.our_mpcc.traj_update_gate] + self.our_mpcc.gate_interp_sigma2[self.our_mpcc.traj_update_gate])
+            update_mask = (self.our_mpcc.arc_trajectory.x > self.our_mpcc.gate_theta_list_offset[self.our_mpcc.traj_update_gate] - self.our_mpcc.gate_interp_sigma1[self.our_mpcc.traj_update_gate]) \
+                        & (self.our_mpcc.arc_trajectory.x < self.our_mpcc.gate_theta_list_offset[self.our_mpcc.traj_update_gate] + self.our_mpcc.gate_interp_sigma2[self.our_mpcc.traj_update_gate])
             self.trajectory_interp[update_mask] = self.our_mpcc.arc_trajectory(self.our_mpcc.arc_trajectory.x[update_mask]) \
                     + np.tile(self.our_mpcc.curr_gate_offset, (sum(update_mask), 1)) * self.our_mpcc.gate_interp_list(self.our_mpcc.arc_trajectory.x[update_mask])[:, None]
 
@@ -280,7 +280,8 @@ class MPCC(FresssackController):
             # draw_line(self.env, self.arc_trajectory_offset(self.arc_trajectory_offset.x), rgba=self.hex2rgba("#2b2b2b7d")) # translated trajectory
             draw_line(self.env, self.trajectory_interp, rgba=self.hex2rgba("#ff9500da")) # interp trajectory
             draw_line(self.env, np.array(self.trajectory_record), rgba=self.hex2rgba("#2BFF00F9")) # recorded trajectory
-            # draw_line(self.env, self.arc_trajectory(self.gate_theta_list), rgba=self.hex2rgba("#F209FEFA")) # gate theta
+            # draw_line(self.env, self.our_mpcc.arc_trajectory(self.our_mpcc.gate_theta_list_offset), rgba=self.hex2rgba("#F209FE8A")) # gate theta
+            draw_line(self.env, np.stack([self.our_mpcc.arc_trajectory(self.our_mpcc.gate_theta_list_offset[self.our_mpcc.traj_update_gate]), self.our_mpcc.arc_trajectory(self.our_mpcc.gate_theta_list_offset[self.our_mpcc.traj_update_gate])+self.our_mpcc.curr_gate_offset]), rgba=self.hex2rgba("#002aff55"))
             # draw_line(self.env, np.stack([self.arc_trajectory_offset(self.last_theta), obs["pos"]]), rgba=self.hex2rgba("#002aff55"))
             draw_line(self.env, pos_traj[0:-1:5],rgba=self.hex2rgba("#ffff00a0"))
             
