@@ -231,7 +231,10 @@ class FresssackMPCC:
         if need_gate_update or need_obs_update:
             # recompute gate_theta
             self.gate_theta_list_offset, _ = self.traj_tool.find_gate_waypoint(self.arc_trajectory, [gate.pos for gate in self.gates])
-            self.gate_waypoint_tangent = self.arc_trajectory.derivative()(self.gate_theta_list_offset[self.traj_update_gate])
+            if self.traj_update_gate != 2:
+                self.gate_waypoint_tangent = self.arc_trajectory.derivative()(self.gate_theta_list_offset[self.traj_update_gate])
+            else:
+                self.gate_waypoint_tangent = self.gates[2].norm_vec
             # translate trajectory
             p_traj = self.get_updated_traj_param(self.arc_trajectory)
             p_obst = self.get_cylinder_param()

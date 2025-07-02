@@ -109,18 +109,19 @@ def simulate(
         passed_gates.append(obs["target_gate"] if obs["target_gate"] >= 0 else 4)
         vel_max.append(np.max(np.array(velocity)))
         vel_avg.append(np.mean(np.array(velocity)))
-        print(f"Max Velocity: {vel_max[-1]:.2f}, Mean Velocity: {vel_avg[-1]:.2f}\n\n")
+        ep_pass = [x for x in ep_times if x is not None]
+        print(f"{len(ep_pass)}/{len(ep_times)}, Max Velocity: {vel_max[-1]:.2f}, Mean Velocity: {vel_avg[-1]:.2f}\n\n")
 
     # Close the environment
     env.close()
-    ep_times_all = ep_times
-    ep_times = [x for x in ep_times if x is not None]
-    print(f"Success Rate: {int(len(ep_times)/n_runs*100)}%")
-    print(f"Average Lap Time: {sum(ep_times)/len(ep_times):.2f}")
-    print("Lap Times:   \t|" + '\t|'.join(f"{t:.2f}" if t is not None else '----' for t in ep_times_all) + '\t|')
+    ep_pass = [x for x in ep_times if x is not None]
+    print(f"Success Rate: {int(len(ep_pass)/n_runs*100)}%")
+    print(f"Average Lap Time: {sum(ep_pass)/len(ep_pass):.2f}")
+    print("Lap Times:   \t|" + '\t|'.join(f"{t:.2f}" if t is not None else '----' for t in ep_times) + '\t|')
     print("Passed Gates:\t|"  + '\t|'.join(f"{int(t)}" for t in passed_gates) + '\t|')
     print("Max Velocity:\t|"  + '\t|'.join(f"{float(t):.2f}" for t in vel_max) + '\t|')
     print("Mean Velocity:\t|" + '\t|'.join(f"{float(t):.2f}" for t in vel_avg) + '\t|')
+    ep_times = ep_pass
 
     return ep_times
 
