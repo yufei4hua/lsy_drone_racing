@@ -76,7 +76,7 @@ solver_param_dict : Dict[str, Union[List[np.floating], np.floating]] = {
     'qp_solver_iter_max' : 20,
     'nlp_solver_max_iter' :50,
 
-    'T_f' : 0.6,
+    'T_f' : 0.66,
     'N' : 40,
 
     'model_arc_length' : 0.05,
@@ -84,21 +84,21 @@ solver_param_dict : Dict[str, Union[List[np.floating], np.floating]] = {
     'model_traj_end' : 9.0,
 
     'q_l' : 200,
-    'q_l_peak' : [800, 800, 800, 1600],
+    'q_l_peak' : [800, 800, 800, 1000],
     'q_c':100,
-    'q_c_peak':[900, 1100, 1600, 1900],
+    'q_c_peak':[800, 1000, 1050, 800],
     'q_c_sigma1':[1.1, 0.8, 1.1, 0.8],
     'q_c_sigma2':[0.5, 0.5, 0.6, 0.1],
-    'gate_interp_peak':[1.2, 1.4, 1.1, 1.8],
+    'gate_interp_peak':[1.2, 1.4, 1.1, 1.3],
     'gate_interp_sigma1': [0.5, 0.5, 0.9, 0.5],
     'gate_interp_sigma2':[0.4, 0.8, 0.8, 10.0],
     'Q_w':1 * DM(np.eye(3)),
     'R_df':DM(np.diag([1,0.4,0.4,0.4])),
-    'miu':1,
-    'obst_w':41,
+    'miu':0.4,
+    'obst_w':36,
     'd_extend':0.15,
-    'lb_vel': 0.92,
-    'ub_vel':3.9,
+    'lb_vel': 0.8,
+    'ub_vel':3.6,
 }
 
 our_mpcc : FresssackMPCC = FresssackMPCC(param_dict = solver_param_dict)
