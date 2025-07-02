@@ -222,20 +222,24 @@ class FresssackMPCC:
             self.arc_trajectory_offset = self.arc_trajectory
             p_traj = self.get_updated_traj_param(self.arc_trajectory_offset)
             p_obst = self.get_cylinder_param()
-            p_gate_offset = self.get_curr_gate_offset(self.traj_update_gate, self.gates[self.traj_update_gate].norm_vec)
+            p_gate_offset = self.get_curr_gate_offset(self.traj_update_gate, self.gate_waypoint_tangent)
             p_full = np.concatenate([p_traj, p_obst, p_gate_offset])
             for i in range(self.N):
                 self.solver.set(i, "p", p_full)
 
-        self.curr_gate_offset = self.get_curr_gate_offset(self.traj_update_gate, self.gates[self.traj_update_gate].norm_vec)
+        self.curr_gate_offset = self.get_curr_gate_offset(self.traj_update_gate, self.gate_waypoint_tangent if hasattr(self, "gate_waypoint_tangent") else None)
         
         if need_gate_update or need_obs_update:
             # recompute gate_theta
             self.gate_theta_list_offset, _ = self.traj_tool.find_gate_waypoint(self.arc_trajectory, [gate.pos for gate in self.gates])
+            if self.traj_update_gate != 2:
+                self.gate_waypoint_tangent = self.arc_trajectory.derivative()(self.gate_theta_list_offset[self.traj_update_gate])
+            else:
+                self.gate_waypoint_tangent = self.gates[2].norm_vec
             # translate trajectory
             p_traj = self.get_updated_traj_param(self.arc_trajectory)
             p_obst = self.get_cylinder_param()
-            p_gate_offset = self.get_curr_gate_offset(self.traj_update_gate, self.gates[self.traj_update_gate].norm_vec)
+            p_gate_offset = self.get_curr_gate_offset(self.traj_update_gate, self.gate_waypoint_tangent)
             p_full = np.concatenate([p_traj, p_obst, p_gate_offset])
             for i in range(self.N):
                 self.solver.set(i, "p", p_full)
