@@ -88,7 +88,7 @@ solver_param_dict : Dict[str, Union[List[np.floating], np.floating]] = {
     'q_c':100,
     'q_c_peak':[800, 1000, 1050, 800],
     'q_c_sigma1':[1.1, 0.8, 1.1, 0.8],
-    'q_c_sigma2':[0.5, 0.5, 0.6, 0.1],
+    'q_c_sigma2':[0.5, 0.5, 0.6, 0.8],
     'gate_interp_peak':[1.2, 1.4, 1.1, 1.3],
     'gate_interp_sigma1': [0.5, 0.5, 0.9, 0.5],
     'gate_interp_sigma2':[0.4, 0.8, 0.8, 10.0],
