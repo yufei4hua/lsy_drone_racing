@@ -214,6 +214,7 @@ class FresssackMPCC:
         # Setup trajectory update gate index
         if self.traj_update_gate is None:
             self.traj_update_gate = 0
+            self.gate_waypoint_tangent = self.gates[0].norm_vec
         
         # wait a while then reset to norminal trajectory
         if next_gate > self.traj_update_gate and last_theta - self.gate_theta_list_offset[self.traj_update_gate] > self.gate_interp_sigma2[self.traj_update_gate]:
