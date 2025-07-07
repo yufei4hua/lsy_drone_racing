@@ -46,8 +46,10 @@ ROS_AVAILABLE = False
 
 
 solver_param_dict : Dict[str, Union[List[np.floating], np.floating]] = {
-
-    'traj_path' : r"lsy_drone_racing/planned_trajectories/traj_20.csv",
+    'pos_bound': [np.array([-2.0, 2.0]), np.array([-2.0, 2.0]), np.array([0.0, 2.0])],
+    'vel_bound': [-1.0, 5.0],
+    'compile_path' : r"lsy_drone_racing/tools/mpcc_controller/our_mpcc.json",
+    'traj_path' : r"lsy_drone_racing/planned_trajectories/traj_22.csv",
 
     'starting_pos' : [1.0, 1.5, 0.07],
 
@@ -87,7 +89,7 @@ solver_param_dict : Dict[str, Union[List[np.floating], np.floating]] = {
     'q_l_peak' : [800, 800, 800, 900],
     'q_c':100,
     'q_c_peak':[800, 1000, 1000, 700],
-    'q_c_sigma1':[1.1, 0.8, 1.0, 0.8],
+    'q_c_sigma1':[0.8, 0.4, 1.0, 0.8],
     'q_c_sigma2':[0.5, 0.5, 0.6, 1.2],
     'gate_interp_peak':[1.2, 1.4, 1.1, 1.3],
     'gate_interp_sigma1': [0.5, 0.5, 0.9, 0.5],

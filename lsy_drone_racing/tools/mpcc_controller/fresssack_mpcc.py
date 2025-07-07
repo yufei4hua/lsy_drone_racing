@@ -80,6 +80,14 @@ class FresssackMPCC:
     u_guess : List[np.floating]
     traj_update_gate : int
 
+    # For safety in real world implementation
+    pos_bound : List[NDArray[np.floating]] = None
+    velocity_bound : NDArray[np.floating] = None
+
+    # Compiled MPC path
+    model_name : str = 'mpcc_traj_translation'
+    compile_path : str = 'lsy_drone_racing/acados_solvers/mpcc_prescripted.json'
+
     def __init__(self,
                 param_dict : Dict[str, Union[List[np.floating], np.floating]],
                 ):
@@ -137,19 +145,27 @@ class FresssackMPCC:
         self.ub_vel = param_dict['ub_vel']
 
         # Model and Symbolics
+        self.model_name = param_dict.get('model_name', self.model_name)
         self.model_syms = FresssackDroneModel(model_traj_N = int(self.model_traj_length/self.model_arc_length),
                                     num_gates = self.num_gates,
-                                    num_ostacles = self.num_obstacles,
-                                    init_model = True
+                                    num_obstacles = self.num_obstacles,
+                                    init_model = True,
+                                    name = self.model_name
                                     )
         self.model = self.model_syms.model
 
+        # Safety parameters
+        self.pos_bound = param_dict.get('pos_bound', None) # List of 3
+        self.velocity_bound = param_dict.get('velocity_bound', None) # List of 2D
+
+        # MPC path
+        self.compile_path = param_dict.get('compile_path', self.compile_path)
 
         # Read Trajectory
         self.read_traj(path = self.traj_path)
 
         # Create Solver
-        self.create_ocp_solver_external()
+        self.create_ocp_solver_external(path = self.compile_path)
 
         # Reset Solver
         self.reset_solver()
@@ -182,7 +198,36 @@ class FresssackMPCC:
         for i in range(self.N):
             self.solver.set(i, "p", p_full)
 
+    def out_of_pos_bound(self, pos : NDArray[np.floating]) -> bool:
+        """Check if the position is out of bounds.
+        
+        Args:
+            pos: 3D position vector.
+        
+        Returns:
+            bool: True if out of bounds, False otherwise.
+        """
+        if self.pos_bound is None:
+            return False
+        for i in range(3):
+            if pos[i] < self.pos_bound[i][0] or pos[i] > self.pos_bound[i][1]:
+                return True
+        return False
 
+    def out_of_vel_bound(self, vel : NDArray[np.floating]) -> bool:
+        """Check if the velocity is out of bounds.
+
+        Args:
+            vel: 3D velocity vector.
+
+        Returns:
+            bool: True if out of bounds, False otherwise.
+        """
+        if self.velocity_bound is None:
+            return False
+        else:
+            velocity = np.linalg.norm(vel)
+            return self.velocity_bound[0] < velocity < self.velocity_bound[1]
 
     def control_step(self, x : NDArray,
                     last_theta : np.floating,
@@ -576,19 +621,20 @@ class FresssackDroneModel:
     def __init__(self,
                 model_traj_N : int,
                 num_gates : int = 4,
-                num_ostacles : int = 4,
-                init_model = False
+                num_obstacles : int = 4,
+                init_model = False,
+                name : str = "mpcc_traj_translation"
                 ):
         self.model_traj_N = model_traj_N
         self.num_gates = num_gates
-        self.num_obstacles = num_ostacles
+        self.num_obstacles = num_obstacles
         if init_model:
-            self.init_quadrotor_model()
+            self.init_quadrotor_model(name = name)
 
-    def init_quadrotor_model(self) -> AcadosModel:
+    def init_quadrotor_model(self, name : str= "mpcc_traj_translation") -> AcadosModel:
             """Symbolic Quadrotor Model."""
             # Define name of solver to be used in script
-            model_name = "mpcc_traj_translation"
+            model_name = name
 
             # Define Gravitational Acceleration
             GRAVITY = 9.806
