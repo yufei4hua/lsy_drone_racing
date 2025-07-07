@@ -49,7 +49,7 @@ solver_param_dict : Dict[str, Union[List[np.floating], np.floating]] = {
     'pos_bound': [np.array([-2.0, 2.0]), np.array([-2.0, 2.0]), np.array([0.0, 2.0])],
     'vel_bound': [-1.0, 5.0],
     'compile_path' : r"lsy_drone_racing/tools/mpcc_controller/our_mpcc.json",
-    'traj_path' : r"lsy_drone_racing/planned_trajectories/traj_22.csv",
+    'traj_path' : r"lsy_drone_racing/planned_trajectories/traj_22_k.csv",
 
     'starting_pos' : [1.0, 1.5, 0.07],
 
@@ -61,11 +61,10 @@ solver_param_dict : Dict[str, Union[List[np.floating], np.floating]] = {
 
     ],
     'obstacles' : [
-        Obstacle(pos = np.array([1.0, 0.0, 1.4]), safe_radius = 0.25),
+        Obstacle(pos = np.array([1.0, 0.0, 1.4]), safe_radius = 0.15),
         Obstacle(pos = np.array([0.5, -1.0, 1.4]), safe_radius = 0.20),
-        Obstacle(pos = np.array([0.0, 1.5, 1.4]), safe_radius = 0.28),
-        Obstacle(pos = np.array([-0.5, 0.5, 1.4]), safe_radius = 0.15),
-
+        Obstacle(pos = np.array([0.0, 1.5, 1.4]), safe_radius = 0.01),
+        Obstacle(pos = np.array([-0.5, 0.5, 1.4]), safe_radius = 0.01),
     ],
 
 
@@ -78,7 +77,7 @@ solver_param_dict : Dict[str, Union[List[np.floating], np.floating]] = {
     'qp_solver_iter_max' : 20,
     'nlp_solver_max_iter' :50,
 
-    'T_f' : 0.66,
+    'T_f' : 0.60,
     'N' : 40,
 
     'model_arc_length' : 0.05,
@@ -86,21 +85,21 @@ solver_param_dict : Dict[str, Union[List[np.floating], np.floating]] = {
     'model_traj_end' : 9.0,
 
     'q_l' : 200,
-    'q_l_peak' : [600, 600, 700, 900],
+    'q_l_peak' : [800, 800, 800, 1400],
     'q_c':100,
-    'q_c_peak':[800, 800, 600, 700],
-    'q_c_sigma1':[0.9, 0.7, 0.8, 0.8],
-    'q_c_sigma2':[0.5, 0.5, 0.6, 1.2],
-    'gate_interp_peak':[1.2, 1.4, 1.1, 1.3],
+    'q_c_peak':[1000, 100, 1400, 0],
+    'q_c_sigma1':[0.9, 0.6, 1.0, 0.2],
+    'q_c_sigma2':[0.3, 0.4, 0.5, 0.1],
+    'gate_interp_peak':[1.2, 1.2, 1.2, 1.4],
     'gate_interp_sigma1': [0.5, 0.5, 0.9, 0.5],
-    'gate_interp_sigma2':[0.4, 0.8, 0.8, 10.0],
+    'gate_interp_sigma2':[0.3, 0.8, 0.8, 2.0],
     'Q_w':1 * DM(np.eye(3)),
     'R_df':DM(np.diag([1,0.4,0.4,0.4])),
-    'miu':0.4,
-    'obst_w':36,
+    'miu':1.0,
+    'obst_w':10,
     'd_extend':0.15,
-    'lb_vel': 0.8,
-    'ub_vel':3.6,
+    'lb_vel': 0.99,
+    'ub_vel':4.2,
 }
 
 our_mpcc : FresssackMPCC = FresssackMPCC(param_dict = solver_param_dict)
@@ -158,7 +157,8 @@ class MPCC(FresssackController):
         )
 
         # initialize
-        self.last_theta = 0.0
+        # NOTE: EXP: update initial last theta
+        self.last_theta, _ = self.our_mpcc.traj_tool.find_nearest_waypoint(self.our_mpcc.arc_trajectory, obs['pos'], 0.5)
         self.last_f_collective = 0.3
         self.last_rpy_cmd = np.zeros(3)
         self.last_f_cmd = 0.3
