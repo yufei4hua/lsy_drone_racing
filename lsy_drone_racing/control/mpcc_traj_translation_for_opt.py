@@ -97,7 +97,7 @@ class MPCC(FresssackController):
         )
 
         # initialize
-        self.last_theta = 0.0
+        self.last_theta, _ = self.our_mpcc.traj_tool.find_nearest_waypoint(self.our_mpcc.arc_trajectory, self.pos, 0.5)
         self.last_f_collective = 0.3
         self.last_rpy_cmd = np.zeros(3)
         self.last_f_cmd = 0.3
