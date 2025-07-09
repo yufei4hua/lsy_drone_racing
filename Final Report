@@ -21,7 +21,7 @@ Results & Ablations:
     Online Competition:
         6/10 4.7s
     Sim:
-        Paleteu Fronto Plot - success rate vs. lap time
+        Pareto Front Plot - success rate vs. lap time
         Violin Plot - lap time consistency
         Video for each gates
         Ablations
