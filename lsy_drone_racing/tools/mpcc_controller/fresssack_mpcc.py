@@ -170,7 +170,7 @@ class FresssackMPCC:
         # Reset Solver
         self.reset_solver()
         
-
+    # region Reset
     def reset_solver(self):
         # Reset race object positions
         self.gates = self.gates_init
@@ -229,6 +229,7 @@ class FresssackMPCC:
             velocity = np.linalg.norm(vel)
             return self.velocity_bound[0] < velocity < self.velocity_bound[1]
 
+    # region Control Step
     def control_step(self, x : NDArray,
                     last_theta : np.floating,
                     need_gate_update : bool,
@@ -341,6 +342,7 @@ class FresssackMPCC:
         self.gate_theta_list, _ = self.traj_tool.find_gate_waypoint(self.arc_trajectory, [gate.pos for gate in self.gates])
         self.gate_theta_list_offset = self.gate_theta_list
 
+    # region Ocp Solver
     def create_ocp_solver_external(
             self,
             verbose: bool = False,
@@ -402,6 +404,7 @@ class FresssackMPCC:
             ocp.solver_options.tf = self.T_f
             self.solver = AcadosOcpSolver(ocp, json_file=path, verbose=verbose)
     
+    # region Obst Param
     def _gen_pillar_cylinder(self):
         """init pillar cylinder from self.obstacles
         Returns:
@@ -411,7 +414,7 @@ class FresssackMPCC:
         for obst in self.obstacles:
             x, y = obst.pos[:2]
             r = obst.safe_radius
-            cylinder_list.append((x, y, r))
+            cylinder_list.append([x, y, r])
         return cylinder_list
 
     def get_cylinder_param(self) -> NDArray[np.floating]:
@@ -428,6 +431,7 @@ class FresssackMPCC:
             cylinder_params.append(r)
         return np.array(cylinder_params, dtype=np.float32)
 
+    # region Traj Param
     def get_updated_traj_param(self, trajectory: CubicSpline):
         """get updated trajectory parameters upon replaning"""
         # construct pd/tp lists from current trajectory
@@ -512,6 +516,7 @@ class FresssackMPCC:
         dist = norm_2(vec)
         return dist
     
+    # region MPCC Cost
     def mpcc_cost_components(self):
         pos = vertcat(self.model_syms.px, self.model_syms.py, self.model_syms.pz)
         ang = vertcat(self.model_syms.roll, self.model_syms.pitch, self.model_syms.yaw)
