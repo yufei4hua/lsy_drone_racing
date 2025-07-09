@@ -9,6 +9,7 @@ Look for instructions in `README.md` and in the official documentation.
 
 from __future__ import annotations
 
+import os
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -35,6 +36,7 @@ def simulate(
     controller: str | None = None,
     n_runs: int = 1,
     gui: bool | None = None,
+    log_dir : str = r'lsy_drone_racing/logs/roll_outs',
 ) -> list[float]:
     """Evaluate the drone controller over multiple episodes.
 
@@ -116,15 +118,26 @@ def simulate(
     env.close()
     ep_pass = [x for x in ep_times if x is not None]
     print(f"Success Rate: {int(len(ep_pass)/n_runs*100)}%")
-    print(f"Average Lap Time: {sum(ep_pass)/len(ep_pass):.2f}")
+    print(f"Average Lap Time: {((sum(ep_pass)/len(ep_pass)) if len(ep_pass) > 0 else 0.0):.2f}")
     print("Lap Times:   \t|" + '\t|'.join(f"{t:.2f}" if t is not None else '----' for t in ep_times) + '\t|')
     print("Passed Gates:\t|"  + '\t|'.join(f"{int(t)}" for t in passed_gates) + '\t|')
     print("Max Velocity:\t|"  + '\t|'.join(f"{float(t):.2f}" for t in vel_max) + '\t|')
     print("Mean Velocity:\t|" + '\t|'.join(f"{float(t):.2f}" for t in vel_avg) + '\t|')
+    # Log all roll-out statistics to a csv file
+    log_all_roll_outs(log_path=Path(log_dir), ep_times=ep_times, passed_gates=passed_gates, vel_max=vel_max, vel_avg=vel_avg)
     ep_times = ep_pass
 
     return ep_times
 
+
+def log_all_roll_outs(log_path : str, ep_times : list[float], passed_gates: list[int], vel_max: list[float], vel_avg: list[float]):
+    """Log all roll-out statistics to a csv file."""
+    os.makedirs(log_path,exist_ok=True)
+    log_path = os.path.join(log_path, "roll_outs.csv")
+    with open(log_path, "w") as f:
+        f.write("Lap Times,Passed Gates,Max Velocity,Mean Velocity\n")
+        for i in range(len(ep_times)):
+            f.write(f"{(ep_times[i] if ep_times[i] is not None else -1.0):.2f},{passed_gates[i] if passed_gates[i] is not None else 0},{vel_max[i]:.2f},{vel_avg[i]:.2f}\n")
 
 def log_episode_stats(obs: dict, info: dict, config: ConfigDict, curr_time: float):
     """Log the statistics of a single episode."""
