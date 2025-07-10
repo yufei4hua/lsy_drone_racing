@@ -29,7 +29,7 @@ try:
     ROS_AVAILABLE = True
 except:
     ROS_AVAILABLE = False
-# ROS_AVAILABLE = False
+ROS_AVAILABLE = False
 
 
 import numpy as np
