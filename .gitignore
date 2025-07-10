@@ -33,3 +33,4 @@ lsy_drone_racing/control/test_controller.py
 lsy_drone_racing/reinforcement_learning/
 runs/
 lsy_drone_racing/planned_trajectories/
+lsy_drone_racing/logs/roll_outs/roll_outs.csv
