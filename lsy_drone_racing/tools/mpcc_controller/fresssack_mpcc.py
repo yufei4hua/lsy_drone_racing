@@ -156,7 +156,7 @@ class FresssackMPCC:
 
         # Safety parameters
         self.pos_bound = param_dict.get('pos_bound', None) # List of 3
-        self.velocity_bound = param_dict.get('velocity_bound', None) # List of 2D
+        self.velocity_bound = param_dict.get('vel_bound', None) # List of 2D
 
         # MPC path
         self.compile_path = param_dict.get('compile_path', self.compile_path)
@@ -227,7 +227,7 @@ class FresssackMPCC:
             return False
         else:
             velocity = np.linalg.norm(vel)
-            return self.velocity_bound[0] < velocity < self.velocity_bound[1]
+            return not(self.velocity_bound[0] < velocity < self.velocity_bound[1])
 
     # region Control Step
     def control_step(self, x : NDArray,

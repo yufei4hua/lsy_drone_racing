@@ -234,7 +234,13 @@ class MPCC(FresssackController):
         if self.last_theta > solver_param_dict['model_traj_end']:
             self.finished = True
             print("Quit-finished")
-
+        if self.our_mpcc.out_of_pos_bound(self.pos):
+            self.finished = True
+            print("Quit-flying out of safe area")
+        if self.our_mpcc.out_of_vel_bound(self.vel):
+            self.finished = True
+            print("Quit-out of safe velocity range")
+            
         cmd = np.concatenate(
             (
                 np.array([self.last_f_cmd]),
