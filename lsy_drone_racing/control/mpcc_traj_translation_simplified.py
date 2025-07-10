@@ -237,9 +237,9 @@ class MPCC(FresssackController):
         if self.our_mpcc.out_of_pos_bound(self.pos):
             self.finished = True
             print("Quit-flying out of safe area")
-        if self.our_mpcc.out_of_vel_bound(self.vel):
-            self.finished = True
-            print("Quit-out of safe velocity range")
+        # if self.our_mpcc.out_of_vel_bound(self.vel):
+        #     self.finished = True
+        #     print("Quit-out of safe velocity range")
             
         cmd = np.concatenate(
             (

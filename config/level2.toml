@@ -17,7 +17,7 @@ check_drone_start_pos = true
 real_track_objects = true
 
 [[deploy.drones]]
-id = 98
+id = 99
 channel = 100
 
 [sim]
