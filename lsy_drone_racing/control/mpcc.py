@@ -74,7 +74,7 @@ class MPCC(EasyController):
 
         # global params
         self.N = 50
-        self.T_HORIZON = 0.7
+        self.T_HORIZON = 0.6
         self.dt = self.T_HORIZON / self.N
         self.model_arc_length = 0.05 # the segment interval for trajectory to be input to the model
         self.model_traj_length = 12 # maximum trajectory length the param can take
@@ -88,6 +88,9 @@ class MPCC(EasyController):
         self.acados_ocp_solver, self.ocp = self.create_ocp_solver(self.T_HORIZON, self.N, self.arc_trajectory)
 
         # initialize
+        self.pos_bound = [np.array([-1.5, 1.5]), np.array([-2.0, 1.8]), np.array([0.0, 1.5])]
+        self.velocity_bound = [-1.0, 4.0]
+
         self.last_theta = 0.0
         self.last_v_theta = 0.0 # TODO: replan?
         self.last_f_collective = 0.3
@@ -351,6 +354,21 @@ class MPCC(EasyController):
 
         return acados_ocp_solver, ocp
 
+    def position_out_of_bound(self, pos : NDArray[np.floating]):
+        if self.pos_bound is None:
+            return False
+        for i in range(3):
+            if pos[i] < self.pos_bound[i][0] or pos[i] > self.pos_bound[i][1]:
+                return True
+        return False
+
+    def velocity_out_of_bound(self, vel : NDArray[np.floating]):
+        if self.velocity_bound is None:
+            return False
+        else:
+            velocity = np.linalg.norm(vel)
+            return not(self.velocity_bound[0] < velocity < self.velocity_bound[1])
+
     def compute_control(
         self, obs: dict[str, NDArray[np.floating]], info: dict | None = None
     ) -> NDArray[np.floating]:
@@ -402,10 +420,16 @@ class MPCC(EasyController):
         self.acados_ocp_solver.set(0, "ubx", xcurrent)
 
 
-        # test:
+        # for real world safety
         if self.last_theta >= 9.0:
             self.finished = True
-
+            print("Quit-finished")
+        if self.position_out_of_bound(self.pos):
+            self.finished = True
+            print("Quit-flying out of safe area")
+        if self.velocity_out_of_bound(self.vel):
+            self.finished = True
+            print("Quit-out of safe velocity range")
         
         status = self.acados_ocp_solver.solve()
         qp_iter = self.acados_ocp_solver.get_stats("qp_iter")[1]
