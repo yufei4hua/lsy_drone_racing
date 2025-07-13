@@ -127,7 +127,6 @@ class MPCC(FresssackController):
                         thickness=[0.1, 0.1, 0.1, 0.1],     # thickness of capsule, gaussian cost
                         # thickness=[0.2, 0.2, 0.2, 0.2],     # thickness of capsule, gaussian cost
                         )
-        # region Cylinder radius
         self.init_obstacles(obs=obs, 
                             obs_safe_radius=[0.25, 0.25, 0.3, 0.10])#[0.3, 0.3, 0.3, 0.3])
         
