@@ -29,6 +29,7 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
     def __init__(self, 
                  env: VecDroneRaceEnv,
                  k_alive = 0.5,
+                 k_alive_anneal = 0.1,
                  k_obst = 0.2,
                  k_obst_d = 0.5,
                  k_gates = 2.0,
@@ -58,9 +59,11 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
         self._act_bias = np.array([MASS * GRAVITY, 0.0, 0.0, 0.0], dtype=np.float32)
         self._prev_act = np.repeat(self._act_bias[None, :], self._num_envs, axis=0)
         self._prev_gate = np.zeros(self._num_envs, dtype=int)
+        self._steps = np.zeros(self._num_envs, dtype=int)
         # region Param
         """REWARD PARAMETERS"""
         self.k_alive = k_alive
+        self.k_alive_anneal = k_alive_anneal
         self.k_obst = k_obst
         self.k_obst_d = k_obst_d
         self.k_gates = k_gates
@@ -75,13 +78,6 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
         self.k_imit = k_imit
 
     # region Reset
-    def _reset_storage(self):
-        self._prev_drone_pos = self.obs_env['pos']
-        self._prev_obst_xy = self.obs_env['obstacles_pos'][:, 0, :2]
-        self._prev_act = np.repeat(self._act_bias[None, :], self._num_envs, axis=0)
-        self._prev_gate = np.zeros(self._num_envs, dtype=int)
-        self._prev_gate_pos = self.obs_env['gates_pos'][:, 0]
-
     def reset(self, *, seed: int | None = None, options: dict | None = None, mask: Array | None = None) -> Tuple[np.ndarray, Dict]:
         # call lower level reset
         obs, info = self.env.unwrapped._reset(seed=seed, mask=mask)
@@ -95,6 +91,7 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
         self._prev_act = np.repeat(self._act_bias[None, :], self._num_envs, axis=0)
         self._prev_gate = np.zeros(self._num_envs, dtype=int)
         self._prev_gate_pos = self.obs_env['gates_pos'][:, 0]
+        self._steps[mask] = int(0)
         if mask is None or mask[0]: # if the first world is reset
             self.traj_record = self.obs_env['pos'][0, :] # debug trajectory
         # setup teacher policy
@@ -125,6 +122,7 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
         self.marked_for_reset = done # update mask after reset
 
         self.traj_record = np.vstack([self.traj_record, self.obs_env['pos'][0, :]]) # debug trajectory
+        self._steps += 1
         try:
             draw_line(self, self.traj_record[0:-1:5], rgba=np.array([0.0, 1.0, 0.0, 0.2]))
         except:
@@ -215,6 +213,7 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
         """
         N = act.shape[0]
         rewards = np.full(N, self.k_alive, dtype=float)
+        rewards = rewards * (self.k_alive_anneal ** self._steps)
         # data preparation
         curr_gate   = obs["target_gate"].astype(int)                # (N,)
         drone_pos   = obs["pos"]                                    # (N, 3)
@@ -250,7 +249,7 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
         r_vel = self.k_vel * (1 + np.linalg.norm(rel_xy_obst_gaus, axis=1) - r_obst_d) \
                 * np.linalg.norm(drone_vel, axis=1)
         # reward: yaw angle
-        yaw = np.abs(R.from_quat(obs["quat"]).as_euler('zyx', degrees=False)[:, 0])
+        yaw = np.sum(np.abs(R.from_quat(obs["quat"]).as_euler('zyx', degrees=False)), axis=-1)
         r_yaw = -self.k_yaw * yaw
 
         # sum up
@@ -265,9 +264,10 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
         # reward debug
         # i = 0
         # print(
-        #     f"[env {i}] obst:{r_obst[i]:+.3f} | obst_d:{r_obst_d[i]:+.3f} | "
-        #     f"gates:{r_gates[i]:+.3f} | center:{r_center[i]:+.3f} | "
+        #     f"alive:{self.k_alive * self.k_alive_anneal ** self._steps[i]:+.3f} | obst:{r_obst[i]:+.3f} | obst_d:{r_obst_d[i]:+.3f} | "
+        #     f"gates:{r_gates[i]:+.3f} | center:{r_center[i]:+.3f} | pass:{(self.k_success if prev_gate_delta[i] else 0.0):+.3f} | "
         #     f"act:{r_act[i]:+.3f} | vel:{r_vel[i]:+.3f} | yaw:{r_yaw[i]:+.3f} | "
+        #     f"imit:{r_imit[i]:+.3f} | "
         #     f"total:{rewards[i]:+.3f}"
         # )
         

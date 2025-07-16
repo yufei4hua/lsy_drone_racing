@@ -31,3 +31,5 @@ lsy_drone_racing/ros/rviz/meshes/scene.xml
 lsy_drone_racing/bags/record_bag.sh
 lsy_drone_racing/ros/rviz/visualization.rvi
 wandb/
+**/*.zip
+runs/
