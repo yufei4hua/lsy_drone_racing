@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from lsy_drone_racing.control.controller import Controller
     from lsy_drone_racing.envs.drone_race import DroneRaceEnv
 
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +103,7 @@ def simulate(
             if config.sim.gui:
                 if ((i * fps) % config.env.freq) < fps:
                     env.render()
+                    time.sleep(1/config.env.freq)
             i += 1
 
         controller.episode_callback()  # Update the controller internal state and models.
