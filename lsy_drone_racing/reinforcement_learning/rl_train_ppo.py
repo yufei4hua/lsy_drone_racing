@@ -29,6 +29,8 @@ from lsy_drone_racing.utils import load_config
 class Args:
     exp_name: str = os.path.basename(__file__)[: -len(".py")]
     """the name of this experiment"""
+    start_from_scratch: bool = True
+    """start from scratch or load from latest checkpoint"""
     seed: int = 1
     """seed of the experiment"""
     torch_deterministic: bool = True
@@ -51,15 +53,15 @@ class Args:
     # Algorithm specific arguments
     env_id: str = "DroneRacing-v0"
     """the id of the environment"""
-    total_timesteps: int = int(5e6)
+    total_timesteps: int = int(4e6)
     """total timesteps of the experiments"""
     learning_rate: float = 3e-4
     """the learning rate of the optimizer"""
     dev_envs: str = "cpu"
     """run jax envrionments on cpu/gpu"""
-    num_envs: int = 256
+    num_envs: int = 1000
     """the number of parallel game environments"""
-    num_steps: int = 256
+    num_steps: int = 100
     """the number of steps to run in each environment per policy rollout"""
     anneal_lr: bool = True
     """Toggle learning rate annealing for policy and value networks"""
@@ -67,13 +69,13 @@ class Args:
     """the discount factor gamma"""
     gae_lambda: float = 0.95
     """the lambda for the general advantage estimation"""
-    num_minibatches: int = 128
+    num_minibatches: int = 1000
     """the number of mini-batches"""
-    update_epochs: int = 10
+    update_epochs: int = 15
     """the K epochs to update the policy"""
     norm_adv: bool = True
     """Toggles advantages normalization"""
-    clip_coef: float = 0.2
+    clip_coef: float = 0.1
     """the surrogate clipping coefficient"""
     clip_vloss: bool = True
     """Toggles whether or not to use a clipped loss for the value function, as per the paper."""
@@ -95,20 +97,33 @@ class Args:
     """the number of iterations (computed in runtime)"""
 
     # region Reward Coef
-    k_alive:   float = 1.0
-    k_obst:    float = 0.2
-    k_obst_d:  float = 0.5
-    k_gates:   float = 2.0
-    k_center:  float = 0.3
-    k_vel:     float = +0.04
-    k_act:     float = 0.01
-    k_act_d:   float = 0.001
-    k_yaw:     float = 0.1
-    k_crash:   float = 25.0
-    k_success: float = 40.0
-    k_finish: float = 40.0
-    k_imit:    float = 0.4
+    k_alive:        float = 0.8
+    k_alive_anneal: float = 1.0 # anneal alive reward at every step
+    k_obst:         float = 0.0
+    k_obst_d:       float = 0.0
+    k_gates:        float = 3.0
+    k_center:       float = 0.4
+    k_vel:          float = -0.04
+    k_act:          float = 0.01
+    k_act_d:        float = 0.001
+    k_yaw:          float = 0.1
+    k_crash:        float = 25.0
+    k_success:      float = 40.0
+    k_finish:       float = 40.0
+    k_imit:         float = 0.3
     """REWARD PARAMETERS"""
+
+# load model
+def load_latest_model(log_dir: Path) -> Path:
+    import re
+    patt = re.compile(r"rl_drone_racing_(\d+)\.pth$")
+    candidates = [(int(m.group(1)), f) for f in log_dir.glob("rl_drone_racing_*.pth")
+                  if (m := patt.match(f.name))]
+    if not candidates:
+        raise FileNotFoundError("No saved model found in log_dir")
+    latest_path = max(candidates, key=lambda t: t[0])[1]
+    print(f"Loading model: {latest_path}")
+    return latest_path
 
 # region Env
 def make_env(config, args, gamma):
@@ -128,6 +143,7 @@ def make_env(config, args, gamma):
     env = RLDroneRacingWrapper(
         env,
         k_alive   = args.k_alive,
+        k_alive_anneal  = Args.k_alive_anneal,
         k_obst    = args.k_obst,
         k_obst_d  = args.k_obst_d,
         k_gates   = args.k_gates,
@@ -142,7 +158,7 @@ def make_env(config, args, gamma):
         k_imit    = args.k_imit,
     ) # my custom wrapper
     env = RecordEpisodeStatistics(env) # for wandb log
-    # env = NormalizeReward(env, gamma=gamma) # might help
+    env = NormalizeReward(env, gamma=gamma) # might help
     # env = TransformReward(env, lambda reward: np.clip(reward, -10, 10))
     return env
 
@@ -157,6 +173,7 @@ class Agent(nn.Module):
     """the best drone flyer"""
     def __init__(self, envs):
         super().__init__()
+        self.envs = envs
         obs_dim = np.prod(envs.single_observation_space.shape)
         act_dim = np.prod(envs.single_action_space.shape)
 
@@ -192,7 +209,7 @@ class Agent(nn.Module):
         dist = Normal(mean, std)
         if action is None:
             action = dist.sample()
-            action = torch.clamp(action, torch.as_tensor(envs.single_action_space.low, device=action.device), torch.as_tensor(envs.single_action_space.high, device=action.device))        
+            action = torch.clamp(action, torch.as_tensor(self.envs.single_action_space.low, device=action.device), torch.as_tensor(self.envs.single_action_space.high, device=action.device))        
         return action, dist.log_prob(action).sum(1), dist.entropy().sum(1), self.critic(x)
     
     @torch.no_grad()
@@ -201,9 +218,11 @@ class Agent(nn.Module):
         mean = self.actor_mean(base)
         if deterministic:
             return mean
-        log_std = torch.clamp(self.actor_logstd(base), -5.0, 2.0)
-        std  = torch.exp(log_std)
+        action_logstd = self.actor_logstd.expand_as(mean)
+        std  = torch.exp(action_logstd)
         dist = Normal(mean, std)
+        action = dist.sample()
+        action = torch.clamp(action, torch.as_tensor(self.envs.single_action_space.low, device=action.device), torch.as_tensor(self.envs.single_action_space.high, device=action.device))
         return dist.sample()
 
 # region Main
@@ -248,6 +267,12 @@ if __name__ == "__main__":
     agent = Agent(envs).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
+    # region Load Model
+    log_dir = Path(__file__).parent / "log4"
+    if args.start_from_scratch == False:
+        model_path = load_latest_model(log_dir)
+        agent.load_state_dict(torch.load(model_path))
+
     # ALGO Logic: Storage setup
     obs = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space.shape).to(device)
     actions = torch.zeros((args.num_steps, args.num_envs) + envs.single_action_space.shape).to(device)
@@ -290,18 +315,22 @@ if __name__ == "__main__":
             next_done = np.logical_or(terminations, truncations)
             rewards[step] = torch.tensor(reward).to(device).view(-1)
             next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(next_done).to(device)
-            # env.render()
+                # envs.render()
             if "episode" in infos:
                 ep_return += np.sum(infos['episode']['r'][infos['_episode']])
                 ep_length += np.sum(infos['episode']['l'][infos['_episode']])
                 num_finishes += np.sum(infos['_episode'])
         
         # write summary at each iteration
-        print(f"total_iter={iteration}, global_step={global_step}, episodic_return={ep_return/num_finishes if num_finishes > 0 else 0.0}")
+        print(f"total_iter={iteration}, global_step={global_step}, "
+              f"ep_return={ep_return/num_finishes if num_finishes > 0 else 0.0}, "
+              f"ep_length={ep_length/num_finishes if num_finishes > 0 else 0.0} "
+              )
         writer.add_scalar("charts/episodic_return", ep_return/num_finishes if num_finishes > 0 else 0.0, global_step)
         writer.add_scalar("charts/episodic_length", ep_length/num_finishes if num_finishes > 0 else 0.0, global_step)
 
         # bootstrap value if not done
+        # region GAE
         with torch.no_grad():
             next_value = agent.get_value(next_obs).reshape(1, -1)
             advantages = torch.zeros_like(rewards).to(device)
@@ -396,7 +425,7 @@ if __name__ == "__main__":
         print("SPS:", int(global_step / (time.time() - start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
 
-        if args.save_model and iteration%100_000 == 0:
+        if args.save_model and iteration%5 == 0:
             log_dir = Path(__file__).parent / "log4"
             model_path = log_dir / f"rl_drone_racing_iter_{iteration}.pth"
             torch.save(agent.state_dict(), model_path)
@@ -407,14 +436,14 @@ if __name__ == "__main__":
         log_dir = Path(__file__).parent / "log4"
         log_dir.mkdir(parents=True, exist_ok=True)
 
-        pattern = re.compile(rf"{re.escape(run_name)}_(\d+)\.pth$")
+        pattern = re.compile(rf"rl_drone_racing_(\d+)\.pth$")
         existing = [
             (int(m.group(1)), f)
             for f in log_dir.glob(f"rl_drone_racing_*.pth")
             if (m := pattern.match(f.name))
         ]
         next_idx = (max(idx for idx, _ in existing) + 1) if existing else 0
-
+        
         final_path = log_dir / f"rl_drone_racing_{next_idx}.pth"
         torch.save(agent.state_dict(), final_path)
         print(f"✅ Final model saved to {final_path}")
