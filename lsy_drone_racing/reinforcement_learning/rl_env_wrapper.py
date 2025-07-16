@@ -102,8 +102,8 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
 
     # region Step
     def step(self, action: np.ndarray):
-        # if IMMITATION_LEARNING: # test teacher policy
-        #     action = self.teacher_controller.compute_control(self.obs_env, None) - self._act_bias
+        if IMMITATION_LEARNING: # test teacher policy
+            action = self.teacher_controller.compute_control(self.obs_env, None) - self._act_bias
         action_exec = action + self._act_bias
         self.obs_env, _, terminated, truncated, info = self.env.step(action_exec)
         state = self._obs_to_state(self.obs_env, action)
@@ -262,14 +262,14 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
             rewards += r_imit
 
         # reward debug
-        # i = 0
-        # print(
-        #     f"alive:{self.k_alive * self.k_alive_anneal ** self._steps[i]:+.3f} | obst:{r_obst[i]:+.3f} | obst_d:{r_obst_d[i]:+.3f} | "
-        #     f"gates:{r_gates[i]:+.3f} | center:{r_center[i]:+.3f} | pass:{(self.k_success if prev_gate_delta[i] else 0.0):+.3f} | "
-        #     f"act:{r_act[i]:+.3f} | vel:{r_vel[i]:+.3f} | yaw:{r_yaw[i]:+.3f} | "
-        #     f"imit:{r_imit[i]:+.3f} | "
-        #     f"total:{rewards[i]:+.3f}"
-        # )
+        i = 80
+        print(
+            f"alive:{self.k_alive * self.k_alive_anneal ** self._steps[i]:+.3f} | obst:{r_obst[i]:+.3f} | obst_d:{r_obst_d[i]:+.3f} | "
+            f"gates:{r_gates[i]:+.3f} | center:{r_center[i]:+.3f} | pass:{(self.k_success if prev_gate_delta[i] else 0.0):+.3f} | "
+            f"act:{r_act[i]:+.3f} | vel:{r_vel[i]:+.3f} | yaw:{r_yaw[i]:+.3f} | "
+            f"imit:{r_imit[i]:+.3f} | "
+            f"total:{rewards[i]:+.3f}"
+        )
         
         # update saving
         self._prev_act        = act

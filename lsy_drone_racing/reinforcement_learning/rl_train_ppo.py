@@ -39,7 +39,7 @@ class Args:
     """if toggled, cuda will be enabled by default"""
     track: bool = True
     """if toggled, this experiment will be tracked with Weights and Biases"""
-    wandb_project_name: str = "rl-drone-racing-test"
+    wandb_project_name: str = "rl-drone-racing"
     """the wandb's project name"""
     wandb_entity: str = "fresssack"
     """the entity (team) of wandb's project"""
@@ -57,11 +57,11 @@ class Args:
     """total timesteps of the experiments"""
     learning_rate: float = 3e-4
     """the learning rate of the optimizer"""
-    dev_envs: str = "cpu"
+    dev_envs: str = "gpu"
     """run jax envrionments on cpu/gpu"""
-    num_envs: int = 1000
+    num_envs: int = 1024
     """the number of parallel game environments"""
-    num_steps: int = 100
+    num_steps: int = 64
     """the number of steps to run in each environment per policy rollout"""
     anneal_lr: bool = True
     """Toggle learning rate annealing for policy and value networks"""
@@ -69,7 +69,7 @@ class Args:
     """the discount factor gamma"""
     gae_lambda: float = 0.95
     """the lambda for the general advantage estimation"""
-    num_minibatches: int = 1000
+    num_minibatches: int = 512
     """the number of mini-batches"""
     update_epochs: int = 15
     """the K epochs to update the policy"""
@@ -97,18 +97,18 @@ class Args:
     """the number of iterations (computed in runtime)"""
 
     # region Reward Coef
-    k_alive:        float = 0.8
-    k_alive_anneal: float = 1.0 # anneal alive reward at every step
+    k_alive:        float = 0.6
+    k_alive_anneal: float = 0.998 # anneal alive reward at every step
     k_obst:         float = 0.0
     k_obst_d:       float = 0.0
-    k_gates:        float = 3.0
-    k_center:       float = 0.4
-    k_vel:          float = -0.04
-    k_act:          float = 0.01
-    k_act_d:        float = 0.001
+    k_gates:        float = 4.0
+    k_center:       float = 0.3
+    k_vel:          float = -0.1
+    k_act:          float = 0.1
+    k_act_d:        float = 0.01
     k_yaw:          float = 0.1
-    k_crash:        float = 25.0
-    k_success:      float = 40.0
+    k_crash:        float = 20.0
+    k_success:      float = 20.0
     k_finish:       float = 40.0
     k_imit:         float = 0.3
     """REWARD PARAMETERS"""
