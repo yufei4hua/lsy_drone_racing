@@ -16,7 +16,6 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.interpolate import CubicSpline
 from scipy.spatial.transform import Rotation as R
-from traitlets import TraitType
 
 from lsy_drone_racing.control.fresssack_controller import FresssackController
 from lsy_drone_racing.tools.ext_tools import TrajectoryTool
@@ -26,7 +25,6 @@ try:
 except ImportError:
     plt = None
 
-from lsy_drone_racing.control import Controller
 from lsy_drone_racing.utils.utils import draw_line
 
 if TYPE_CHECKING:

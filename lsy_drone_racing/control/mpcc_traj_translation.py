@@ -9,19 +9,19 @@ Note that the trajectory uses pre-defined waypoints instead of dynamically gener
 
 from __future__ import annotations  # Python 3.10 type hints
 
-from typing import TYPE_CHECKING, List, Dict, Callable, Optional, Union, Set
+
+from typing import *
+
 import os
 import numpy as np
 from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
-from casadi import MX, DM, cos, sin, vertcat, dot, norm_2, floor, if_else, exp, Function, power, fmin
+from casadi import MX, DM, cos, sin, vertcat, dot, norm_2, floor, if_else, exp, Function, power
 from scipy.interpolate import CubicSpline
 from scipy.spatial.transform import Rotation as R
-from casadi import interpolant
 
 from lsy_drone_racing.control.fresssack_controller import FresssackController
-from lsy_drone_racing.control.fresssack_controller import MultiArrayTx, MarkerArrayTx, CapsuleMarkerTx, MeshMarkerTx, PathTx, TFTx
 
-from lsy_drone_racing.tools.ext_tools import TrajectoryTool, TransformTool
+from lsy_drone_racing.tools.ext_tools import TrajectoryTool
 from lsy_drone_racing.utils.utils import draw_line
 
 if TYPE_CHECKING:
@@ -36,11 +36,13 @@ try:
     from nav_msgs.msg import Path
     from tf2_ros import TransformBroadcaster
     from visualization_msgs.msg import Marker, MarkerArray
+    from lsy_drone_racing.control.fresssack_controller import MultiArrayTx, MarkerArrayTx, CapsuleMarkerTx, MeshMarkerTx, PathTx, TFTx
 
     from transformations import quaternion_from_euler, euler_from_quaternion
     ROS_AVAILABLE = True
 except:
     ROS_AVAILABLE = False
+# ROS_AVAILABLE = False
 
 
 class MPCC(FresssackController):
@@ -56,18 +58,18 @@ class MPCC(FresssackController):
             config: The configuration of the environment.
         """
         super().__init__(obs, info, config, ros_tx_freq = None)
-        self.freq = config.env.freq
+        self.freq = config.env.freq 
         self._tick = 0
 
         self.env = env
         self.init_gates(obs=obs,
                         gate_outer_size=[0.8, 0.8, 0.8, 0.8],   # capsule built in between inner & outer
-                        thickness=[0.3, 0.3, 0.3, 0.05],     # thickness of capsule, gaussian cost
+                        thickness=[0.3, 0.2, 0.3, 0.15],     # thickness of capsule, gaussian cost
                         # thickness=[0.2, 0.2, 0.2, 0.2],     # thickness of capsule, gaussian cost
                         )
-
+        # region Cylinder radius
         self.init_obstacles(obs=obs, 
-                            obs_safe_radius=[0.3, 0.3, 0.3, 0.3])
+                            obs_safe_radius=[0.25, 0.20, 0.28, 0.10])#[0.3, 0.3, 0.3, 0.3])
         
         # # Demo waypoints
         # waypoints = np.array(
@@ -84,11 +86,15 @@ class MPCC(FresssackController):
         #         [-0.5, -0.5, 1.1],
         #     ]
         # )
-        # trajectory = self.trajectory_generate(self.t_total, waypoints)
+        # trajectory = self.trajectory_generate(12, waypoints)
+        
+        # region Trajectory
         # pre-planned trajectory
-        # t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/param_a_5_sec_offsets.csv")
-        t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/test_run.csv")
+        # TODO: better trajectory, without 180 turn
+        t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/traj_11.csv")
+        # t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/test_run_third_gate_modified_lots_of_handcraft.csv")
         trajectory = CubicSpline(t, pos)
+
         # # easy controller trajectory
         # gates_rotates = R.from_quat(obs['gates_quat'])
         # rot_matrices = np.array(gates_rotates.as_matrix())
@@ -99,7 +105,7 @@ class MPCC(FresssackController):
         # # t, waypoints = self.avoid_collision(waypoints, obs['obstacles_pos'], 0.3)
         # trajectory = self.trajectory_generate(self.t_total, waypoints)
 
-        # global params
+        # region Global params
         self.N = 40
         self.T_HORIZON = 0.6
         self.dt = self.T_HORIZON / self.N
@@ -117,7 +123,6 @@ class MPCC(FresssackController):
         self.arc_trajectory = self.traj_tool.arclength_reparameterize(trajectory)
         self.arc_trajectory_offset = self.arc_trajectory
         self.gate_theta_list, _ = self.traj_tool.find_gate_waypoint(self.arc_trajectory, [gate.pos for gate in self.gates])
-        self.gate_theta_list = np.array([2.2, 4.1, 6.8, 8.3])
 
         # build model & create solver
         self.acados_ocp_solver, self.ocp = self.create_ocp_solver(self.T_HORIZON, self.N, self.arc_trajectory)
@@ -159,80 +164,80 @@ class MPCC(FresssackController):
                         'miu_cost',
                         'cost_g_c']
         if ROS_AVAILABLE and self.ros_tx:
-            self.mpcc_traj_tx = PathTx(
-                node_name = 'mpcc_path_tx',
-                topic_name = 'mpcc_traj',
-                queue_size = 10
-            )
-            self.path_tx = PathTx(
-                node_name = 'global_path_tx',
-                topic_name = 'global_path',
-                queue_size = 10
-            )
-            self.gate_tf_txs = [
-                TFTx(node_name = 'gate_' + str(i) + '_TF_tx', topic_name = 'gate_' + str(i))
-                for i in range(len(self.gates))
-            ]
+            # self.mpcc_traj_tx = PathTx(
+            #     node_name = 'mpcc_path_tx',
+            #     topic_name = 'mpcc_traj',
+            #     queue_size = 10
+            # )
+            # self.path_tx = PathTx(
+            #     node_name = 'global_path_tx',
+            #     topic_name = 'global_path',
+            #     queue_size = 10
+            # )
+            # self.gate_tf_txs = [
+            #     TFTx(node_name = 'gate_' + str(i) + '_TF_tx', topic_name = 'gate_' + str(i))
+            #     for i in range(len(self.gates))
+            # ]
             
-            self.obstacle_tf_txs = [
-                TFTx(node_name = 'obstacle_' + str(i) + '_TF_tx', topic_name = 'obstacle_' + str(i))
-                for i in range(len(self.obstacles))
-            ]
-            current_dir = os.path.dirname(os.path.abspath(__file__))
+            # self.obstacle_tf_txs = [
+            #     TFTx(node_name = 'obstacle_' + str(i) + '_TF_tx', topic_name = 'obstacle_' + str(i))
+            #     for i in range(len(self.obstacles))
+            # ]
+            # current_dir = os.path.dirname(os.path.abspath(__file__))
 
-            gate_mesh_file = os.path.join(current_dir, '..', 'ros', 'rviz','meshes', 'gate.dae')
-            gate_unobserved_mesh_file = os.path.join(current_dir, '..', 'ros', 'rviz','meshes', 'gate_not_sure.dae')
-            gate_passed_mesh_file = os.path.join(current_dir, '..', 'ros', 'rviz','meshes', 'gate_passed.dae')
-            self.gate_marker_txs = [
-                    MeshMarkerTx(
-                    node_name = 'gate_' + str(i) + '_marker_tx',
-                    topic_name = 'gate_' + str(i) + '_marker',
-                    mesh_path = [os.path.abspath(gate_unobserved_mesh_file),
-                                  os.path.abspath(gate_mesh_file),
-                                  os.path.abspath(gate_passed_mesh_file)],
-                    frame_id = 'gate_' + str(i),
-                    queue_size = 1
-                )
-                for i in range(len(self.gates))
-            ]
+            # gate_mesh_file = os.path.join(current_dir, '..', 'ros', 'rviz','meshes', 'gate.dae')
+            # gate_unobserved_mesh_file = os.path.join(current_dir, '..', 'ros', 'rviz','meshes', 'gate_not_sure.dae')
+            # gate_passed_mesh_file = os.path.join(current_dir, '..', 'ros', 'rviz','meshes', 'gate_passed.dae')
+            # self.gate_marker_txs = [
+            #         MeshMarkerTx(
+            #         node_name = 'gate_' + str(i) + '_marker_tx',
+            #         topic_name = 'gate_' + str(i) + '_marker',
+            #         mesh_path = [os.path.abspath(gate_unobserved_mesh_file),
+            #                       os.path.abspath(gate_mesh_file),
+            #                       os.path.abspath(gate_passed_mesh_file)],
+            #         frame_id = 'gate_' + str(i),
+            #         queue_size = 1
+            #     )
+            #     for i in range(len(self.gates))
+            # ]
 
-            self.gate_marker_array_tx = MarkerArrayTx(
-                node_name = 'gate_marker_array_tx',
-                topic_name = 'gate_marker_array',
-                queue_size = 5
-            )
+            # self.gate_marker_array_tx = MarkerArrayTx(
+            #     node_name = 'gate_marker_array_tx',
+            #     topic_name = 'gate_marker_array',
+            #     queue_size = 5
+            # )
             
-            obstacle_mesh_file = os.path.join(current_dir, '..', 'ros', 'rviz','meshes', 'obstacle.dae')
-            obstacle_unobserved_mesh_file = os.path.join(current_dir, '..', 'ros', 'rviz','meshes', 'obstacle_not_sure.dae')
-            self.obstacle_marker_txs = [
-                    MeshMarkerTx(
-                    node_name = 'obstacle_' + str(i) + '_marker_tx',
-                    topic_name = 'obstacle_' + str(i) + '_marker',
-                    mesh_path = [os.path.abspath(obstacle_unobserved_mesh_file),
-                                 os.path.abspath(obstacle_mesh_file)],
-                    frame_id = 'obstacle_' + str(i),
-                    queue_size = 1
-                )
-                for i in range(len(self.obstacles))
-            ]
-            self.obstacle_marker_array_tx = MarkerArrayTx(
-                node_name = 'obstacle_marker_array_tx',
-                topic_name = 'obstacle_marker_array',
-                queue_size = 5
-            )
+            # obstacle_mesh_file = os.path.join(current_dir, '..', 'ros', 'rviz','meshes', 'obstacle.dae')
+            # obstacle_unobserved_mesh_file = os.path.join(current_dir, '..', 'ros', 'rviz','meshes', 'obstacle_not_sure.dae')
+            # self.obstacle_marker_txs = [
+            #         MeshMarkerTx(
+            #         node_name = 'obstacle_' + str(i) + '_marker_tx',
+            #         topic_name = 'obstacle_' + str(i) + '_marker',
+            #         mesh_path = [os.path.abspath(obstacle_unobserved_mesh_file),
+            #                      os.path.abspath(obstacle_mesh_file)],
+            #         frame_id = 'obstacle_' + str(i),
+            #         queue_size = 1
+            #     )
+            #     for i in range(len(self.obstacles))
+            # ]
+            # self.obstacle_marker_array_tx = MarkerArrayTx(
+            #     node_name = 'obstacle_marker_array_tx',
+            #     topic_name = 'obstacle_marker_array',
+            #     queue_size = 5
+            # )
 
-            self.collision_capsule_tx =  CapsuleMarkerTx(
-                    node_name = 'collision_capsule' + '_tx',
-                    topic_name = 'collision_capsule',
-                    frame_id = 'map',
-                    queue_size = 20
-                )            
+            # self.collision_capsule_tx =  CapsuleMarkerTx(
+            #         node_name = 'collision_capsule' + '_tx',
+            #         topic_name = 'collision_capsule',
+            #         frame_id = 'map',
+            #         queue_size = 20
+            #     )            
 
-            self.capsule_marker_array_tx = MarkerArrayTx(
-                node_name = 'capsule_marker_array_tx',
-                topic_name = 'capsule_marker_array',
-                queue_size = 5,
-            )
+            # self.capsule_marker_array_tx = MarkerArrayTx(
+            #     node_name = 'capsule_marker_array_tx',
+            #     topic_name = 'capsule_marker_array',
+            #     queue_size = 5,
+            # )
             
             self.mpc_costs_tx = MultiArrayTx(
                 node_name = 'cost_debug_tx', 
@@ -241,6 +246,7 @@ class MPCC(FresssackController):
                 topic_prefix = 'mpcc_cost'
             )
             
+    # region Model
     def export_quadrotor_ode_model(self) -> AcadosModel:
         """Symbolic Quadrotor Model."""
         # Define name of solver to be used in script
@@ -334,12 +340,16 @@ class MPCC(FresssackController):
         self.pd_list = MX.sym("pd_list", 3*self.model_traj_N)
         self.tp_list = MX.sym("tp_list", 3*self.model_traj_N)
         self.qc_dyn = MX.sym("qc_dyn", 1*self.model_traj_N)
+        self.ql_dyn = MX.sym("ql_dyn", 1*self.model_traj_N)
+        self.gate_interp = MX.sym("gate_interp", 1*self.model_traj_N)
         self.obst_list = MX.sym("obst_list", self.num_ostacles * 3) # 4 * 3 = 12
         self.gate_offset_param = MX.sym("gate_offset_param", 3)
         params = vertcat(
             self.pd_list,
             self.tp_list,
             self.qc_dyn,
+            self.ql_dyn,
+            self.gate_interp,
             self.obst_list,
             self.gate_offset_param
         )
@@ -360,6 +370,7 @@ class MPCC(FresssackController):
 
         return model
     
+    # region Cylinder Dist
     def calc_obst_distance(self, pos, cyl_xy):
         """calculate distances of pos to every obstacles with casadi
         Args:
@@ -372,6 +383,7 @@ class MPCC(FresssackController):
         dist = norm_2(vec)
         return dist
     
+    # region Casadi Interp
     def casadi_linear_interp(self, theta, theta_list, p_flat, dim=3):
         """Manually interpolate a 3D path using CasADi symbolic expressions.
         
@@ -415,6 +427,7 @@ class MPCC(FresssackController):
         trajectory_offset = CubicSpline(theta_list, waypoints_offset)
         return trajectory_offset
 
+    # region Traj Param
     def get_updated_traj_param(self, trajectory: CubicSpline):
         """get updated trajectory parameters upon replaning"""
         # construct pd/tp lists from current trajectory
@@ -422,20 +435,31 @@ class MPCC(FresssackController):
         pd_list = trajectory(theta_list)
         tp_list = trajectory.derivative(1)(theta_list)
         qc_dyn_list = np.zeros(theta_list.shape[0])
+        ql_dyn_list = np.zeros(theta_list.shape[0])
+        gate_interp_list = np.zeros(theta_list.shape[0])
         for idx, gate in enumerate(self.gates):
-            distances = np.linalg.norm(pd_list - gate.pos, axis=-1) # spacial distance
+            # distances = np.linalg.norm(pd_list - gate.pos, axis=-1) # spacial distance
             distances = theta_list - self.gate_theta_list[idx] # progress distance
             qc_dyn_gate_front = np.exp(-distances**2 / (0.5*self.q_c_sigma1[idx])**2) # gaussian
             qc_dyn_gate_behind = np.exp(-distances**2 / (0.5*self.q_c_sigma2[idx])**2) # gaussian
-            qc_dyn_list += qc_dyn_gate_front * (theta_list < self.gate_theta_list[idx]) + qc_dyn_gate_behind * (theta_list >= self.gate_theta_list[idx])
-        self.qc_dyn_weight = CubicSpline(theta_list, qc_dyn_list)
+            qc_dyn_list += self.q_c_peak[idx] * qc_dyn_gate_front * ((theta_list < self.gate_theta_list[idx]) & (theta_list > self.gate_theta_list[idx] - self.q_c_sigma1[idx])) \
+                         + self.q_c_peak[idx] * qc_dyn_gate_behind * ((theta_list >= self.gate_theta_list[idx]) & (theta_list < self.gate_theta_list[idx] + self.q_c_sigma2[idx]))
+            ql_dyn_list += self.q_l_peak[idx] * qc_dyn_gate_front * ((theta_list < self.gate_theta_list[idx]) & (theta_list > self.gate_theta_list[idx] - self.q_c_sigma1[idx])) \
+                         + self.q_l_peak[idx] * qc_dyn_gate_behind * ((theta_list >= self.gate_theta_list[idx]) & (theta_list < self.gate_theta_list[idx] + self.q_c_sigma2[idx]))
+            gate_interp_gate_front  = self.gate_interp_peak[idx] * np.exp(-distances**2 / (0.5*self.gate_interp_sigma1[idx])**2) # gaussian
+            gate_interp_gate_behind = self.gate_interp_peak[idx] * np.exp(-distances**2 / (0.5*self.gate_interp_sigma2[idx])**2) # gaussian
+            gate_interp_list += gate_interp_gate_front * ((theta_list < self.gate_theta_list[idx]) & (theta_list > self.gate_theta_list[idx] - self.gate_interp_sigma1[idx])) \
+                              + gate_interp_gate_behind * ((theta_list >= self.gate_theta_list[idx]) & (theta_list < self.gate_theta_list[idx] + self.gate_interp_sigma2[idx]))
+            
+        self.gate_interp_list = CubicSpline(theta_list, gate_interp_list)
         # import matplotlib.pyplot as plt
         # plt.plot(theta_list, qc_dyn_list)
         # plt.show()
-        p_vals = np.concatenate([pd_list.flatten(), tp_list.flatten(), qc_dyn_list.flatten()])
+        p_vals = np.concatenate([pd_list.flatten(), tp_list.flatten(), qc_dyn_list.flatten(), ql_dyn_list.flatten(), gate_interp_list.flatten()])
         return p_vals
     
     
+    # region MPCC Cost
     def mpcc_cost_components(self):
         pos = vertcat(self.px, self.py, self.pz)
         ang = vertcat(self.roll, self.pitch, self.yaw)
@@ -446,13 +470,15 @@ class MPCC(FresssackController):
         pd_theta = self.casadi_linear_interp(self.theta, theta_list, self.pd_list)
         tp_theta = self.casadi_linear_interp(self.theta, theta_list, self.tp_list)
         qc_dyn_theta = self.casadi_linear_interp(self.theta, theta_list, self.qc_dyn, dim=1)
+        ql_dyn_theta = self.casadi_linear_interp(self.theta, theta_list, self.ql_dyn, dim=1)
+        gate_interp_theta = self.casadi_linear_interp(self.theta, theta_list, self.gate_interp, dim=1)
         tp_theta_norm = tp_theta / norm_2(tp_theta)
         # apply offset on pd_theta
-        pd_theta_offset = pd_theta + qc_dyn_theta * self.gate_offset_param
+        pd_theta_offset = pd_theta + gate_interp_theta * self.gate_offset_param
         e_theta = pos - pd_theta
         e_l = dot(tp_theta_norm, e_theta) * tp_theta_norm
         # e_c = e_theta - e_l
-        # EXP: handle e_l and e_c separately
+        # NOTE: handle e_l and e_c separately, only e_c on offset trajectory
         e_theta_offset = pos - pd_theta_offset
         e_l_offset = dot(tp_theta_norm, e_theta_offset) * tp_theta_norm
         e_c = e_theta_offset - e_l_offset
@@ -464,30 +490,31 @@ class MPCC(FresssackController):
             idx = i * 3
             cyl_xy = self.obst_list[idx     : idx + 2] # extract params from model.p
             cyl_r =  self.obst_list[idx + 2 : idx + 3]
-            dis = self.calc_obst_distance(pd_theta_offset, cyl_xy) # EXP: use trajectory collision to supress q_c & miu
+            dis = self.calc_obst_distance(pd_theta_offset, cyl_xy) # EXP: use trajectory collision to supress q_c
             # trick: to supress q_c & miu when running into obstacle extended surfaces
             q_c_supress += exp( -power(dis/(0.5*(self.d_extend+cyl_r)), 2) )
             # soft punish when getting into safe range: when , cost = gaussian(distance) if outside surface else 1.0
             dis = self.calc_obst_distance(pos, cyl_xy)
             obst_cost += exp( -power(dis/(0.5*cyl_r), 2) )
 
-        q_c_factor = 1 - 0.9 * q_c_supress
+        q_c_factor = 1 - 0.6 * q_c_supress  # supress q_c based on trajectory collision
+        miu_factor = 1 - 0.9 * q_c_supress  # supress miu 
 
         # Break down the costs
-        C_l = self.q_l + self.q_l_peak * qc_dyn_theta
+        C_l = self.q_l + ql_dyn_theta
         e_l_cost = dot(e_l, e_l)
         cost_l = C_l * e_l_cost
 
-        C_c = self.q_c - self.q_c * qc_dyn_theta
+        C_c = self.q_c + qc_dyn_theta
         e_c_cost = dot(e_c, e_c)
-        cost_c = C_c * e_c_cost
+        cost_c = C_c * q_c_factor * e_c_cost
 
         ang_cost = ang.T @ self.Q_w @ ang
         ctrl_cost = control_input.T @ self.R_df @ control_input
 
         cost_obs = self.obst_w * obst_cost
 
-        miu_cost = q_c_factor * (-self.miu) * self.v_theta_cmd
+        miu_cost = (-self.miu) * miu_factor * self.v_theta_cmd
 
         mpcc_cost = cost_l + cost_c + ang_cost + ctrl_cost + cost_obs + miu_cost
 
@@ -509,6 +536,7 @@ class MPCC(FresssackController):
         """calculate mpcc cost function"""
         return self.mpcc_cost_components()['total']
 
+    # region Solver create
     def create_ocp_solver(
         self, Tf: float, N: int, trajectory: CubicSpline,  verbose: bool = False
     ) -> tuple[AcadosOcpSolver, AcadosOcp]:
@@ -532,28 +560,28 @@ class MPCC(FresssackController):
         # Cost Type
         ocp.cost.cost_type = "EXTERNAL"
 
-        """DEFINITION of GLOBAL MPC WEIGHTS"""
-        """DEFINITION of GLOBAL MPC WEIGHTS"""
-        """DEFINITION of GLOBAL MPC WEIGHTS"""
-        """DEFINITION of GLOBAL MPC WEIGHTS"""
+        # region MPCC Weights
         """DEFINITION of GLOBAL MPC WEIGHTS"""
 
         # MPCC Cost Weights
         self.q_l = 200
-        self.q_l_peak = 650
-        self.q_c = 80
-        self.q_c_peak = [800, 1000, 800, 800]
-        self.q_c_sigma1 = [0.6, 0.6, 0.6, 0.7]
-        self.q_c_sigma2 = [0.2, 0.2, 0.4, 0.5]
-        self.Q_w = 1 * DM(np.eye(3))
+        self.q_l_peak = [800, 800, 800, 1000]
+        self.q_c = 100
+        self.q_c_peak = [800, 1000, 1600, 1300]
+        self.q_c_sigma1 = [1.0, 0.6, 1.1, 0.7]
+        self.q_c_sigma2 = [0.6, 0.6, 0.6, 0.1] 
+        self.gate_interp_peak = [1.2, 1.3, 1.19, 1.2]
+        self.gate_interp_sigma1 = [0.5, 0.5, 0.9, 0.5]
+        self.gate_interp_sigma2 = [0.3, 0.8, 0.8, 2.0]
+        self.Q_w = 1 * DM(np.diag([1.0, 1.0, 1.0]))
         self.R_df = DM(np.diag([1,0.4,0.4,0.4]))
-        self.miu = 0.5
+        self.miu = 1
         # obstacle relavent
-        self.obst_w = 50
+        self.obst_w = 41
         self.d_extend = 0.15 # extend distance to supress q_c
         # velocity bounds
-        self.lb_vel = 0.7
-        self.ub_vel = 1.9
+        self.lb_vel = 0.92
+        self.ub_vel = 3.9
 
         
         ocp.model.cost_expr_ext_cost = self.mpcc_cost()
@@ -567,6 +595,8 @@ class MPCC(FresssackController):
         ocp.constraints.lbu = np.array([-10.0, -10.0, -10.0, -10.0, self.lb_vel]) # set a speed lower bound to provide it from stopping at obstacles
         ocp.constraints.ubu = np.array([10.0, 10.0, 10.0, 10.0, self.ub_vel])
         ocp.constraints.idxbu = np.array([0, 1, 2, 3, 4])
+
+        # TODO: EXP: Terminal Cost
 
         # We have to set x0 even though we will overwrite it later on.
         ocp.constraints.x0 = np.zeros((self.nx))
@@ -602,100 +632,102 @@ class MPCC(FresssackController):
         return acados_ocp_solver, ocp
     
     def ros_transmit(self, obs):
-        if self.need_ros_tx(): 
-            self.path_tx.publish(
-                raw_data = {
-                    'traj' : self.arc_trajectory(self.arc_trajectory.x),
-                    'frame_id' : 'map'
-                }
-            )
-            for idx, tx in enumerate(self.gate_tf_txs):
-                tx.publish(
-                    raw_data = 
-                    {
-                        'pos' : self.gates[idx].pos,
-                        'quat' : self.gates[idx]._quat,
-                        'frame_id' : 'map'
-                    }
-                )
-            for idx, tx in enumerate(self.obstacle_tf_txs):
-                tx.publish(
-                    raw_data = 
-                    {
-                        'pos' : self.obstacles[idx].pos,
-                        'quat' : [0,0,0,1],
-                        'frame_id' : 'map'
-                    }
-                )
-        if self.need_ros_tx(slow = True): 
-            gate_marker_list : List[Marker] = []
-            for idx, tx in enumerate(self.gate_marker_txs):
-                marker : Marker = None
-                if self.next_gate > idx:
-                    marker = tx.process_data(
-                        {
-                            'idx' : 2
-                        }
-                    )
-                elif self.gates_visited[idx]:
-                    marker = tx.process_data(
-                        {
-                            'idx' : 1
-                        }
-                    )
-                else:
-                    marker = tx.process_data(
-                        {
-                            'idx' : 0
-                        }
-                    )
-                gate_marker_list.append(marker)
-            self.gate_marker_array_tx.publish(
-                {
-                    'markers' : gate_marker_list
-                }
-            )
+        # if self.need_ros_tx(): 
+        #     self.path_tx.publish(
+        #         raw_data = {
+        #             'traj' : self.arc_trajectory(self.arc_trajectory.x),
+        #             'frame_id' : 'map'
+        #         }
+        #     )
+        #     for idx, tx in enumerate(self.gate_tf_txs):
+        #         tx.publish(
+        #             raw_data = 
+        #             {
+        #                 'pos' : self.gates[idx].pos,
+        #                 'quat' : self.gates[idx]._quat,
+        #                 'frame_id' : 'map'
+        #             }
+        #         )
+        #     for idx, tx in enumerate(self.obstacle_tf_txs):
+        #         tx.publish(
+        #             raw_data = 
+        #             {
+        #                 'pos' : self.obstacles[idx].pos,
+        #                 'quat' : [0,0,0,1],
+        #                 'frame_id' : 'map'
+        #             }
+        #         )
+        # if self.need_ros_tx(slow = True): 
+        #     gate_marker_list : List[Marker] = []
+        #     for idx, tx in enumerate(self.gate_marker_txs):
+        #         marker : Marker = None
+        #         if self.next_gate > idx:
+        #             marker = tx.process_data(
+        #                 {
+        #                     'idx' : 2
+        #                 }
+        #             )
+        #         elif self.gates_visited[idx]:
+        #             marker = tx.process_data(
+        #                 {
+        #                     'idx' : 1
+        #                 }
+        #             )
+        #         else:
+        #             marker = tx.process_data(
+        #                 {
+        #                     'idx' : 0
+        #                 }
+        #             )
+        #         gate_marker_list.append(marker)
+        #     self.gate_marker_array_tx.publish(
+        #         {
+        #             'markers' : gate_marker_list
+        #         }
+        #     )
 
-            obstacle_marker_list = []
-            for idx, tx in enumerate(self.obstacle_marker_txs):
-                marker : Marker = None
-                if self.obstacles_visited[idx]:
-                    marker = tx.process_data(
-                        {
-                            'idx' : 1
-                        }
-                        )
-                else:
-                    marker = tx.process_data(
-                        {
-                            'idx' : 0
-                        }
-                        )
-                obstacle_marker_list.append(marker)
-            self.obstacle_marker_array_tx.publish(
-                {
-                    'markers' : obstacle_marker_list
-                }
-            )
-            capsule_list:List[Marker] = []
-            for idx, item in enumerate(self.capsule_list):
-                a,b,r = item
-                marker_arr : MarkerArray = self.collision_capsule_tx.process_data(
-                    {
-                        'a' : a,
-                        'b' : b,
-                        'r' : r,
-                        'rgba': [1.0,1.0,0.0,0.3],
-                        'base_idx' : 3 * idx
-                    }
-                )
-                capsule_list = capsule_list + [marker for marker in marker_arr.markers]
-            self.capsule_marker_array_tx.publish(
-                 {
-                    'markers' : capsule_list
-                }
-            )
+        #     obstacle_marker_list = []
+        #     for idx, tx in enumerate(self.obstacle_marker_txs):
+        #         marker : Marker = None
+        #         if self.obstacles_visited[idx]:
+        #             marker = tx.process_data(
+        #                 {
+        #                     'idx' : 1
+        #                 }
+        #                 )
+        #         else:
+        #             marker = tx.process_data(
+        #                 {
+        #                     'idx' : 0
+        #                 }
+        #                 )
+        #         obstacle_marker_list.append(marker)
+        #     self.obstacle_marker_array_tx.publish(
+        #         {
+        #             'markers' : obstacle_marker_list
+        #         }
+        #     )
+        #     capsule_list:List[Marker] = []
+        #     for idx, item in enumerate(self.capsule_list):
+        #         a,b,r = item
+        #         marker_arr : MarkerArray = self.collision_capsule_tx.process_data(
+        #             {
+        #                 'a' : a,
+        #                 'b' : b,
+        #                 'r' : r,
+        #                 'rgba': [1.0,1.0,0.0,0.3],
+        #                 'base_idx' : 3 * idx
+        #             }
+        #         )
+        #         capsule_list = capsule_list + [marker for marker in marker_arr.markers]
+        #     self.capsule_marker_array_tx.publish(
+        #          {
+        #             'markers' : capsule_list
+        #         }
+        #     )
+        pass
 
+    # region Compute Control
     def compute_control(
         self, obs: dict[str, NDArray[np.floating]], info: dict | None = None
     ) -> NDArray[np.floating]:
@@ -737,33 +769,37 @@ class MPCC(FresssackController):
             self.acados_ocp_solver.set(i, "u", self.u_guess[i])
         self.acados_ocp_solver.set(self.N, "x", self.x_guess[self.N])
 
+        # region Objects update
         ## update obstacles & write parameters
         if not hasattr(self, "traj_update_gate"):
             self.traj_update_gate = 0
-        # wait a while then reset to norminal trajectory, TODO: smooth transfer based on qc, or better do it in cost function
-        if obs['target_gate'] > self.traj_update_gate and np.linalg.norm(obs['pos'] - obs['gates_pos'][self.traj_update_gate]) > self.q_c_sigma2[self.traj_update_gate]:
+        # wait a while then reset to norminal trajectory
+        if obs['target_gate'] > self.traj_update_gate and self.last_theta - self.gate_theta_list[self.traj_update_gate] > self.gate_interp_sigma2[self.traj_update_gate]:
             self.traj_update_gate = obs['target_gate']
             self.arc_trajectory_offset = self.arc_trajectory
             p_traj = self.get_updated_traj_param(self.arc_trajectory_offset)
             p_obst = self.get_cylinder_param()
-            p_gate_offset = self.get_curr_gate_offset(self.traj_update_gate)
+            p_gate_offset = self.get_curr_gate_offset(self.traj_update_gate, self.gates[self.traj_update_gate].norm_vec)
             p_full = np.concatenate([p_traj, p_obst, p_gate_offset])
             for i in range(self.N):
                 self.acados_ocp_solver.set(i, "p", p_full)
 
+        self.curr_gate_offset = self.get_curr_gate_offset(self.traj_update_gate, self.gates[self.traj_update_gate].norm_vec)
         need_gate_update, _ = self.update_gate_if_needed(obs)
         need_obs_update, _ = self.update_obstacle_if_needed(obs)
         if need_gate_update or need_obs_update:
+            # recompute gate_theta
+            self.gate_theta_list, _ = self.traj_tool.find_gate_waypoint(self.arc_trajectory, [gate.pos for gate in self.gates])
             # translate trajectory
-            curr_gate_offset = self.get_curr_gate_offset(self.traj_update_gate)
-            self.arc_trajectory_offset = self.translate_cubicspline(self.arc_trajectory, curr_gate_offset) # only for visualization
             p_traj = self.get_updated_traj_param(self.arc_trajectory)
             p_obst = self.get_cylinder_param()
-            p_gate_offset = self.get_curr_gate_offset(self.traj_update_gate)
+            p_gate_offset = self.get_curr_gate_offset(self.traj_update_gate, self.gates[self.traj_update_gate].norm_vec)
             p_full = np.concatenate([p_traj, p_obst, p_gate_offset])
             for i in range(self.N):
                 self.acados_ocp_solver.set(i, "p", p_full)
-            self.cylinder_list = self._gen_pillar_cylinder() # for now only for visualization
+            self.arc_trajectory_offset = self.translate_cubicspline(self.arc_trajectory, p_gate_offset) # only for visualization
+            self.cylinder_list = self._gen_pillar_cylinder() # only for visualization
+            self.curr_gate_offset = p_gate_offset # only for visualization
         
 
         # set initial state
@@ -772,15 +808,15 @@ class MPCC(FresssackController):
 
         ## EXP: dynamic velocity limit | works well! It's different than only increase q_l.
         # dyn_ub_vel = self.lb_vel + (self.ub_vel - self.lb_vel) * (1 - 0.9 * np.exp(-2 * np.min(np.linalg.norm(obs['pos'] - obs['gates_pos'], axis=-1)) ** 4))
-        dyn_vel_hard_code_factor = [3, 4, 1, 2]
-        dyn_ub_vel = self.lb_vel + (self.ub_vel - self.lb_vel) * (1 - 1.0 * np.exp(-dyn_vel_hard_code_factor[obs['target_gate']] * np.linalg.norm(obs['pos'] - obs['gates_pos'][obs['target_gate']], axis=-1) ** 4))
-        for i in range(self.N):
-            self.acados_ocp_solver.set(i, "lbu", np.array([-10.0, -10.0, -10.0, -10.0, self.lb_vel]))
-            self.acados_ocp_solver.set(i, "ubu", np.array([10.0, 10.0, 10.0, 10.0, dyn_ub_vel]))
+        # dyn_vel_hard_code_factor = [3, 4, 1, 2]
+        # dyn_ub_vel = self.lb_vel + (self.ub_vel - self.lb_vel) * (1 - 1.0 * np.exp(-dyn_vel_hard_code_factor[obs['target_gate']] * np.linalg.norm(obs['pos'] - obs['gates_pos'][obs['target_gate']], axis=-1) ** 4))
+        # for i in range(self.N):
+        #     self.acados_ocp_solver.set(i, "lbu", np.array([-10.0, -10.0, -10.0, -10.0, self.lb_vel]))
+        #     self.acados_ocp_solver.set(i, "ubu", np.array([10.0, 10.0, 10.0, 10.0, dyn_ub_vel]))
 
-        # real world test safety exit:
-        if self.last_theta >= 8.59:
-            self.finished = True
+        # # real world test safety exit:
+        # if self.last_theta >= 8.59:
+        #     self.finished = True
 
         if self.acados_ocp_solver.solve() == 4:
             pass
@@ -792,6 +828,7 @@ class MPCC(FresssackController):
         ## update initial guess
         self.x_guess = x_result
         self.u_guess = u_result
+        # print(self.u_guess[1][-1]) # print predicted velocity
 
         # x1 = self.acados_ocp_solver.get(1, "x")
         x1 = x_result[1]
@@ -817,32 +854,39 @@ class MPCC(FresssackController):
             for idx, value in enumerate(result):
                 debug_costs[self.mpc_costs_tx_keys[idx]].append(float(value))
 
-        ## visualization
 
-
+        #region Visualization
         pos_traj = np.array([x_result[i][:3] for i in range(self.N+1)])
         if self.need_ros_tx():
-            self.mpcc_traj_tx.publish(
-                raw_data = {
-                    'traj' : pos_traj,
-                    'frame_id' : 'map'
-                }
-            )
+            # TODO: uncomment it if visualization is needed in rviz
+            # self.mpcc_traj_tx.publish(
+            #     raw_data = {
+            #         'traj' : pos_traj,
+            #         'frame_id' : 'map'
+            #     }
+            # )
             self.mpc_costs_tx.publish(raw_data = debug_costs)
         if self.need_ros_tx(slow=True):
             pass
 
         if not hasattr(self, "trajectory_record"):
+            self.trajectory_interp = self.arc_trajectory(self.arc_trajectory.x)
             self.trajectory_record = []
-        self.trajectory_record.append(self.arc_trajectory(self.last_theta)+self.qc_dyn_weight(self.last_theta)*self.get_curr_gate_offset(self.traj_update_gate))
+        self.trajectory_record.append(obs['pos'])
+        if need_gate_update:
+            update_mask = (self.arc_trajectory.x > self.gate_theta_list[self.traj_update_gate] - self.gate_interp_sigma1[self.traj_update_gate]) \
+                        & (self.arc_trajectory.x < self.gate_theta_list[self.traj_update_gate] + self.gate_interp_sigma2[self.traj_update_gate])
+            self.trajectory_interp[update_mask] = self.arc_trajectory(self.arc_trajectory.x[update_mask]) \
+                    + np.tile(self.curr_gate_offset, (sum(update_mask), 1)) * self.gate_interp_list(self.arc_trajectory.x[update_mask])[:, None]
 
         try:
-            draw_line(self.env, self.arc_trajectory(self.arc_trajectory.x[0:-1:2]), self.hex2rgba("#ffffff84"))
-            # draw_line(self.env, np.array(self.trajectory_record[0:-1:2]), rgba=self.hex2rgba("#ff9500da"))
-            # draw_line(self.env, self.arc_trajectory(self.gate_theta_list), rgba=self.hex2rgba("#F209FEFA"))
-            # draw_line(self.env, self.arc_trajectory_offset(self.arc_trajectory_offset.x[0:-1:5]), rgba=self.hex2rgba("#5a5a5a97"))
-            draw_line(self.env, np.stack([self.arc_trajectory_offset(self.last_theta), obs["pos"]]), rgba=self.hex2rgba("#002aff55"))
-            draw_line(self.env, pos_traj[0:-1:3],rgba=self.hex2rgba("#ffff00a0"))
+            draw_line(self.env, self.arc_trajectory(self.arc_trajectory.x), self.hex2rgba("#ffffff83")) # original trajectory
+            # draw_line(self.env, self.arc_trajectory_offset(self.arc_trajectory_offset.x), rgba=self.hex2rgba("#2b2b2b7d")) # translated trajectory
+            draw_line(self.env, self.trajectory_interp, rgba=self.hex2rgba("#ff9500da")) # interp trajectory
+            draw_line(self.env, np.array(self.trajectory_record), rgba=self.hex2rgba("#2BFF00F9")) # recorded trajectory
+            # draw_line(self.env, self.arc_trajectory(self.gate_theta_list), rgba=self.hex2rgba("#F209FEFA")) # gate theta
+            # draw_line(self.env, np.stack([self.arc_trajectory_offset(self.last_theta), obs["pos"]]), rgba=self.hex2rgba("#002aff55"))
+            draw_line(self.env, pos_traj,rgba=self.hex2rgba("#ffff00a0"))
             # obstacles: plot a line from pos to the cylinder when dist < self.d_safe
             for x,y,r in self.cylinder_list:
                 closest = np.array([x,y,obs['pos'][2]])

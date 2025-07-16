@@ -13,16 +13,11 @@ from statistics import pvariance
 from typing import TYPE_CHECKING
 
 import numpy as np
-import scipy
 from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
 from casadi import MX, cos, sin, vertcat, dot, DM, norm_2, floor, if_else
-from scipy.fft import prev_fast_len
 from scipy.interpolate import CubicSpline
 from scipy.spatial.transform import Rotation as R
 from casadi import interpolant
-from sympy import true
-from torch import has_spectral
-from traitlets import TraitError
 
 from lsy_drone_racing.control.fresssack_controller import FresssackController
 from lsy_drone_racing.control.easy_controller import EasyController
@@ -64,9 +59,8 @@ class MPCC(EasyController):
                          vel_limit = [1.0, 1.0, 0.2, 1.0])
 
         # # pre-planned trajectory
-        # t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/param_c_6_sec_bigger_pillar.csv")
-        t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/test_run_third_gate_modified.csv")
-        # t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/param_a_5_sec_offsets.csv")     
+        # t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/test_run_third_gate_modified_lots_of_handcraft.csv")
+        t, pos, vel = FresssackController.read_trajectory(r"lsy_drone_racing/planned_trajectories/traj_11.csv")     
         trajectory = CubicSpline(t, pos)
         # # easy controller trajectory
         # gates_rotates = R.from_quat(obs['gates_quat'])
@@ -80,7 +74,7 @@ class MPCC(EasyController):
 
         # global params
         self.N = 50
-        self.T_HORIZON = 0.7
+        self.T_HORIZON = 0.6
         self.dt = self.T_HORIZON / self.N
         self.model_arc_length = 0.05 # the segment interval for trajectory to be input to the model
         self.model_traj_length = 12 # maximum trajectory length the param can take
@@ -94,6 +88,9 @@ class MPCC(EasyController):
         self.acados_ocp_solver, self.ocp = self.create_ocp_solver(self.T_HORIZON, self.N, self.arc_trajectory)
 
         # initialize
+        self.pos_bound = [np.array([-1.5, 1.5]), np.array([-2.0, 1.8]), np.array([0.0, 1.5])]
+        self.velocity_bound = [-1.0, 4.0]
+
         self.last_theta = 0.0
         self.last_v_theta = 0.0 # TODO: replan?
         self.last_f_collective = 0.3
@@ -328,7 +325,7 @@ class MPCC(EasyController):
 
         # Set Input Constraints
         ocp.constraints.lbu = np.array([-10.0, -10.0, -10.0, -10.0, 0.0]) # last term is v_theta should be positive
-        ocp.constraints.ubu = np.array([10.0, 10.0, 10.0, 10.0, 3.0])
+        ocp.constraints.ubu = np.array([10.0, 10.0, 10.0, 10.0, 4.0])
         ocp.constraints.idxbu = np.array([0, 1, 2, 3, 4])
 
         # We have to set x0 even though we will overwrite it later on.
@@ -356,6 +353,21 @@ class MPCC(EasyController):
         acados_ocp_solver = AcadosOcpSolver(ocp, json_file="mpcc_prescripted.json", verbose=verbose)
 
         return acados_ocp_solver, ocp
+
+    def position_out_of_bound(self, pos : NDArray[np.floating]):
+        if self.pos_bound is None:
+            return False
+        for i in range(3):
+            if pos[i] < self.pos_bound[i][0] or pos[i] > self.pos_bound[i][1]:
+                return True
+        return False
+
+    def velocity_out_of_bound(self, vel : NDArray[np.floating]):
+        if self.velocity_bound is None:
+            return False
+        else:
+            velocity = np.linalg.norm(vel)
+            return not(self.velocity_bound[0] < velocity < self.velocity_bound[1])
 
     def compute_control(
         self, obs: dict[str, NDArray[np.floating]], info: dict | None = None
@@ -402,60 +414,26 @@ class MPCC(EasyController):
             self.acados_ocp_solver.set(i, "x", self.x_guess[i])
             self.acados_ocp_solver.set(i, "u", self.u_guess[i])
         self.acados_ocp_solver.set(self.N, "x", self.x_guess[self.N])
-        
-        # ## replan trajectory:
-        # if self.pos_change_detect(obs):
-        #     gates_rotates = R.from_quat(obs['gates_quat'])
-        #     rot_matrices = np.array(gates_rotates.as_matrix())
-        #     self.gates_norm = np.array(rot_matrices[:,:,1])
-        #     self.gates_pos = obs['gates_pos']
-        #     # replan trajectory
-        #     waypoints = self.calc_waypoints(self.init_pos, self.gates_pos, self.gates_norm)
-        #     t, waypoints = self.avoid_collision(waypoints, obs['obstacles_pos'], 0.3)
-        #     t, waypoints = self.add_drone_to_waypoints(waypoints, obs['pos'], 0.3, curr_theta=self.last_theta+1)
-        #     trajectory = self.trajectory_generate(self.t_total, waypoints)
-        #     trajectory = self.traj_tool.extend_trajectory(trajectory)
-        #     self.arc_trajectory = self.traj_tool.arclength_reparameterize(trajectory, epsilon=1e-3)
-        #     # write trajectory as parameter to solver
-        #     p_vals = self.get_updated_traj_param(self.arc_trajectory)
-        #     # xcurrent[-2], _ = self.traj_tool.find_nearest_waypoint(self.arc_trajectory, obs["pos"]) # correct theta
-        #     for i in range(self.N): # write current trajectory to solver
-        #         self.acados_ocp_solver.set(i, "p", p_vals)
-        #     # EXP: I do an extra solve here, with v_theta fixed, to provide a feasible solution
-        #         fixed_vel = self.u_guess[i][-1]
-        #         self.acados_ocp_solver.set(i, "lbu", np.array([-10.0, -10.0, -10.0, -10.0, fixed_vel-0.00]))
-        #         self.acados_ocp_solver.set(i, "ubu", np.array([10.0, 10.0, 10.0, 10.0, fixed_vel+0.00]))
-        #     # set initial state
-        #     self.acados_ocp_solver.set(0, "lbx", xcurrent)
-        #     self.acados_ocp_solver.set(0, "ubx", xcurrent)
-        #     # solve with v_theta frozen
-        #     self.acados_ocp_solver.solve()
-        #     # Restore constraints
-        #     for i in range(self.N):
-        #         self.acados_ocp_solver.set(i, "lbu", np.array([-10.0, -10.0, -10.0, -10.0, 0.0]))
-        #         self.acados_ocp_solver.set(i, "ubu", np.array([10.0, 10.0, 10.0, 10.0, 3.0]))
-        #     # Update warm start with solution just solved
-        #     self.x_guess = [self.acados_ocp_solver.get(i, "x") for i in range(self.N + 1)]
-        #     self.u_guess = [self.acados_ocp_solver.get(i, "u") for i in range(self.N)]
-        #     # Write new warm start
-        #     for i in range(self.N):
-        #         self.acados_ocp_solver.set(i, "x", self.x_guess[i])
-        #         self.acados_ocp_solver.set(i, "u", self.u_guess[i])
-        #     self.acados_ocp_solver.set(self.N, "x", self.x_guess[self.N])
-        #     self.x_warmup_traj = np.array([x[:3] for x in self.x_guess]) # for visualization
-
 
         # set initial state
         self.acados_ocp_solver.set(0, "lbx", xcurrent)
         self.acados_ocp_solver.set(0, "ubx", xcurrent)
 
 
-        # test:
-        if self.last_theta >= 8.55:
+        # for real world safety
+        if self.last_theta >= 9.0:
             self.finished = True
-
-        if self.acados_ocp_solver.solve() == 4:
-            pass
+            print("Quit-finished")
+        if self.position_out_of_bound(self.pos):
+            self.finished = True
+            print("Quit-flying out of safe area")
+        if self.velocity_out_of_bound(self.vel):
+            self.finished = True
+            print("Quit-out of safe velocity range")
+        
+        status = self.acados_ocp_solver.solve()
+        qp_iter = self.acados_ocp_solver.get_stats("qp_iter")[1]
+        success = (status == 0) or (qp_iter >= 10) 
 
         ## update initial guess
         self.x_guess = [self.acados_ocp_solver.get(i, "x") for i in range(self.N + 1)]
