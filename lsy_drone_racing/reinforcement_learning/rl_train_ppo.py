@@ -97,8 +97,8 @@ class Args:
     """the number of iterations (computed in runtime)"""
 
     # region Reward Coef
-    k_alive:        float = 0.6
-    k_alive_anneal: float = 0.998 # anneal alive reward at every step
+    k_alive:        float = 0.7
+    k_alive_anneal: float = 0.999 # anneal alive reward at every step
     k_obst:         float = 0.0
     k_obst_d:       float = 0.0
     k_gates:        float = 4.0
@@ -110,7 +110,7 @@ class Args:
     k_crash:        float = 20.0
     k_success:      float = 20.0
     k_finish:       float = 40.0
-    k_imit:         float = 0.3
+    k_imit:         float = 0.4
     """REWARD PARAMETERS"""
 
 # load model

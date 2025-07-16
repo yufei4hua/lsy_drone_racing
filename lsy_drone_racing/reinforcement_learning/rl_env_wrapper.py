@@ -6,6 +6,7 @@ from gymnasium.vector.utils import batch_space
 from gymnasium.wrappers.jax_to_numpy import jax_to_numpy
 from lsy_drone_racing.envs.drone_race import DroneRaceEnv, VecDroneRaceEnv
 from jax import Array
+import jax.numpy as jp
 from numpy.typing import NDArray
 from scipy.spatial.transform import Rotation as R
 from crazyflow.constants import GRAVITY, MASS
@@ -24,6 +25,7 @@ if IMMITATION_LEARNING:
     from pathlib import Path
     from lsy_drone_racing.utils import load_config
     from rl_teacher_policy_att_pid import AttitudeController
+RAND_INIT = True
 
 class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
     def __init__(self, 
@@ -60,6 +62,11 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
         self._prev_act = np.repeat(self._act_bias[None, :], self._num_envs, axis=0)
         self._prev_gate = np.zeros(self._num_envs, dtype=int)
         self._steps = np.zeros(self._num_envs, dtype=int)
+        # fetch properties and methods from core env
+        self.sim = self.find_attr(env, 'sim')
+        self._reset_env_data = self.find_attr(env, '_reset_env_data')
+        self.obs = self.find_attr(env, 'obs')
+        self.info = self.find_attr(env, 'info')
         # region Param
         """REWARD PARAMETERS"""
         self.k_alive = k_alive
@@ -78,9 +85,70 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
         self.k_imit = k_imit
 
     # region Reset
+    @staticmethod
+    def find_attr(env, attr_name):
+        while hasattr(env, 'unwrapped'):
+            if hasattr(env, attr_name):
+                return getattr(env, attr_name)
+            env = env.unwrapped
+        raise AttributeError(f"Attribute '{attr_name}' not found.")
+
+    def _reset(self, seed=None, options=None, mask=None):
+        # random initialization
+        if seed is not None:
+            self.sim.seed(seed)
+        self.sim.reset(mask=mask)
+
+        if RAND_INIT:
+            mask = mask if mask is not None else jp.ones(self.unwrapped.unwrapped.data.steps.shape, dtype=bool)
+            num_reset = mask.sum()
+            # manually recorded init points
+            self.rand_init_list = [
+                {'pos': jp.array([1.0, 1.5, 0.07]), 'vel': jp.array([0.0, 0.0, 0.0]), 'quat': jp.array([0.0, 0.0, 0.0, 1.0]), 'f_thrust': 0.3, 'target_gate': 0}, # emphasize takeoff point
+                {'pos': jp.array([1.0, 1.5, 0.07]), 'vel': jp.array([0.0, 0.0, 0.0]), 'quat': jp.array([0.0, 0.0, 0.0, 1.0]), 'f_thrust': 0.3, 'target_gate': 0},
+                {'pos': jp.array([1.0, 1.5, 0.07]), 'vel': jp.array([0.0, 0.0, 0.0]), 'quat': jp.array([0.0, 0.0, 0.0, 1.0]), 'f_thrust': 0.3, 'target_gate': 0},
+                {'pos': jp.array([1.0, 1.5, 0.07]), 'vel': jp.array([0.0, 0.0, 0.0]), 'quat': jp.array([0.0, 0.0, 0.0, 1.0]), 'f_thrust': 0.3, 'target_gate': 0},
+                {'pos': jp.array([1.0, 1.5, 0.07]), 'vel': jp.array([0.0, 0.0, 0.0]), 'quat': jp.array([0.0, 0.0, 0.0, 1.0]), 'f_thrust': 0.3, 'target_gate': 0},
+                # {'pos': jp.array([0.9081, 1.1422, 0.2201]), 'vel': jp.array([-0.2142, -0.7419, 0.2087]), 'quat': jp.array([0.1611, -0.0436, 0.0031, 0.9860]), 'f_thrust': 0.3179, 'target_gate': 0},
+                {'pos': jp.array([0.7550, 0.6635, 0.3080]), 'vel': jp.array([-0.2109, -0.7631, 0.1146]), 'quat': jp.array([0.0452, 0.0307, -0.0066, 0.9985]), 'f_thrust': 0.2883, 'target_gate': 0},
+                {'pos': jp.array([0.2309, -1.1061, 1.0188]), 'vel': jp.array([0.1798, -0.5673, 0.4537]), 'quat': jp.array([-0.0357, 0.0800, 0.0031, 0.9965]), 'f_thrust': 0.2255, 'target_gate': 1},
+                {'pos': jp.array([0.5624, -1.2678, 1.1197]), 'vel': jp.array([1.0049, 0.1084, 0.1169]), 'quat': jp.array([-0.0709, 0.0366, -0.0009, 0.9968]), 'f_thrust': 0.2705, 'target_gate': 1},
+                {'pos': jp.array([1.1311, -0.8747, 1.1062]), 'vel': jp.array([0.0588, 1.0162, -0.1100]), 'quat': jp.array([-0.0605, -0.1642, -0.0146, 0.9845]), 'f_thrust': 0.2624, 'target_gate': 2},
+                {'pos': jp.array([0.6138, -0.0001, 0.8368]), 'vel': jp.array([-0.5123, 0.6669, -0.3205]), 'quat': jp.array([-0.0417, -0.0282, 0.0048, 0.9987]), 'f_thrust': 0.2299, 'target_gate': 2},
+                {'pos': jp.array([0.0045, 0.9539, 0.4696]), 'vel': jp.array([-0.1742, 0.8196, -0.0696]), 'quat': jp.array([0.1123, 0.0797, -0.0008, 0.9905]), 'f_thrust': 0.2878, 'target_gate': 2},
+                {'pos': jp.array([-0.0996, 0.9104, 0.5883]), 'vel': jp.array([-0.3977, -0.8926, 0.0738]), 'quat': jp.array([0.0938, -0.0228, -0.0006, 0.9953]), 'f_thrust': 0.2662, 'target_gate': 3},
+                {'pos': jp.array([-0.2380, 0.5384, 0.7121]), 'vel': jp.array([-0.3728, -1.1330, 0.7930]), 'quat': jp.array([-0.0511, -0.0051, -0.0002, 0.9987]), 'f_thrust': 0.3220, 'target_gate': 3},
+            ]
+            # randomly pick one init points for envs to be reset
+            rand_indices = np.random.randint(len(self.rand_init_list), size=int(num_reset))
+            init_pos = jp.stack([self.rand_init_list[i]['pos'] for i in rand_indices])
+            init_vel = jp.stack([self.rand_init_list[i]['vel'] for i in rand_indices])
+            init_quat = jp.stack([self.rand_init_list[i]['quat'] for i in rand_indices])
+            target_gate = jp.array([self.rand_init_list[i]['target_gate'] for i in rand_indices])
+            
+            self.sim.data = self.sim.data.replace(
+                states=self.sim.data.states.replace(
+                    pos=self.sim.data.states.pos.at[mask].set(init_pos[:,None,:]),
+                    vel=self.sim.data.states.vel.at[mask].set(init_vel[:,None,:]),
+                    quat=self.sim.data.states.quat.at[mask].set(init_quat[:,None,:]),
+                )
+            )
+        self.unwrapped.unwrapped.data = self._reset_env_data(self.unwrapped.unwrapped.data, self.sim.data.states.pos, mask) # NOTE: self.unwrapped.unwrapped.data and self.sim.data are different
+        
+        if RAND_INIT:
+            # correct self.unwrapped.unwrapped.data after _reset_env_data()
+            self.unwrapped.unwrapped.data = self.unwrapped.unwrapped.data.replace(
+                target_gate=self.unwrapped.unwrapped.data.target_gate.at[mask].set(target_gate[:,None])
+            )
+            pass
+
+        return self.obs(), self.info()
+
+
     def reset(self, *, seed: int | None = None, options: dict | None = None, mask: Array | None = None) -> Tuple[np.ndarray, Dict]:
         # call lower level reset
-        obs, info = self.env.unwrapped._reset(seed=seed, mask=mask)
+        # obs, info = self.env.unwrapped._reset(seed=seed, mask=mask)
+        obs, info = self._reset(seed=seed, mask=mask)
         self.obs_env = {k: jax_to_numpy(v[:, 0]) for k, v in obs.items()}
         info = {k: jax_to_numpy(v[:, 0]) for k, v in info.items()}
         state = self._obs_to_state(self.obs_env,
@@ -102,8 +170,8 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
 
     # region Step
     def step(self, action: np.ndarray):
-        if IMMITATION_LEARNING: # test teacher policy
-            action = self.teacher_controller.compute_control(self.obs_env, None) - self._act_bias
+        # if IMMITATION_LEARNING: # test teacher policy
+        #     action = self.teacher_controller.compute_control(self.obs_env, None) - self._act_bias
         action_exec = action + self._act_bias
         self.obs_env, _, terminated, truncated, info = self.env.step(action_exec)
         state = self._obs_to_state(self.obs_env, action)
@@ -262,14 +330,14 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
             rewards += r_imit
 
         # reward debug
-        i = 80
-        print(
-            f"alive:{self.k_alive * self.k_alive_anneal ** self._steps[i]:+.3f} | obst:{r_obst[i]:+.3f} | obst_d:{r_obst_d[i]:+.3f} | "
-            f"gates:{r_gates[i]:+.3f} | center:{r_center[i]:+.3f} | pass:{(self.k_success if prev_gate_delta[i] else 0.0):+.3f} | "
-            f"act:{r_act[i]:+.3f} | vel:{r_vel[i]:+.3f} | yaw:{r_yaw[i]:+.3f} | "
-            f"imit:{r_imit[i]:+.3f} | "
-            f"total:{rewards[i]:+.3f}"
-        )
+        # i = 8
+        # print(
+        #     f"alive:{self.k_alive * self.k_alive_anneal ** self._steps[i]:+.3f} | obst:{r_obst[i]:+.3f} | obst_d:{r_obst_d[i]:+.3f} | "
+        #     f"gates:{r_gates[i]:+.3f} | center:{r_center[i]:+.3f} | pass:{(self.k_success if prev_gate_delta[i] else 0.0):+.3f} | "
+        #     f"act:{r_act[i]:+.3f} | vel:{r_vel[i]:+.3f} | yaw:{r_yaw[i]:+.3f} | "
+        #     f"imit:{r_imit[i]:+.3f} | "
+        #     f"total:{rewards[i]:+.3f}"
+        # )
         
         # update saving
         self._prev_act        = act
