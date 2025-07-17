@@ -86,14 +86,14 @@ def main():
     )
     # 加载模型
     lesson = 4
-    lesson_train_idx = None # default None, use if need reset to earlier model
+    lesson_train_idx = 3 # default None, use if need reset to earlier model
     latest_model_path, lesson_train_idx = get_latest_model_path(log_dir, lesson, idx=lesson_train_idx)
     model = PPO.load(latest_model_path, env=vec_env, device="cpu")
     print(f"Learning Lesson {lesson}.{lesson_train_idx}")
 
     # === 4. 启动训练 ===
     if num_envs > 1:
-        model.learn(total_timesteps=6*400000, callback=[checkpoint_callback, eval_callback])
+        model.learn(total_timesteps=4*400000, callback=[checkpoint_callback, eval_callback])
     else: # for visualization
         render_callback = RenderCallback(render_freq=1)
         model.learn(total_timesteps=10000, callback=[render_callback])

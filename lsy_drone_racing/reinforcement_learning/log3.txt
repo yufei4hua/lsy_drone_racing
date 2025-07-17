@@ -98,7 +98,7 @@ Train: lesson 4.2 Racing environment with random gate
 Train: lesson 4.3 Racing environment Level 2 
     n_envs: 20
     steps: 2 * 400000
-    duration: 38min
+    duration: 17min
     changes: remove imitation learning, add random gates
     result: working fine observed success rate over 50%, avg 6s
     comments: keep going
@@ -106,7 +106,31 @@ Train: lesson 4.3 Racing environment Level 2
 Train: lesson 4.4 Racing environment Level 2 
     n_envs: 20
     steps: 2 * 400000
-    duration: 38min
-    changes: add finish reward, remove rand init, +k_vel, flip k_vel at 3rd gate
-    result: working fine observed success rate over 50%, avg 6s
-    comments: keep going
+    duration: 17min
+    changes: add finish reward, remove rand init, +k_vel, but flip k_vel at 3rd gate
+    result: rush even longer after passing 3rd gate
+    comments: add more panalty for 3rd gate
+    
+Train: lesson 4.5 Racing environment Level 2 (reset to 4.3)
+    n_envs: 20
+    steps: 3 * 400000
+    duration: 17min
+    changes: +k_vel, flip k_vel at 3rd and 4rd gate, and add panalty
+    result: success rate high, but too fast at first 2 gates. and stil rushing to far
+    comments: slower
+
+Train: lesson 4.6 Racing environment Level 2 (reset to 4.3)
+    n_envs: 20
+    steps: 4 * 400000
+    duration: 34min
+    changes: -k_vel, with gate 3 special penalty
+    result: still too fast
+    comments: keep slowing down
+
+Train: lesson 4.7 Racing environment Level 2 (reset to 4.3)
+    n_envs: 20
+    steps: 4 * 400000
+    duration: 34min
+    changes: -k_vel, with heavier penalty, lap time based finish reward
+    result: 
+    comments: 

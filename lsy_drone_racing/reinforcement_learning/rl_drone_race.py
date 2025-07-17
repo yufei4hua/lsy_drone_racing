@@ -230,12 +230,12 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         self.k_obst_d = 0.5
         self.k_gates = 2.0
         self.k_center = 0.3
-        self.k_vel = +0.1
+        self.k_vel = -0.025
         self.k_act = 0.01
         self.k_act_d = 0.001
         self.k_yaw = 0.1
         self.k_crash = 25
-        self.k_success = 20
+        self.k_success = 10
         self.k_finish = 40
         self.k_imit = 0.0
         # TODO: random reset at different racing process
@@ -260,13 +260,12 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         obst_xy = self.rel_xy_obst + drone_pos[:2]
         rel_xy_obst = obs_rl[-6:-4] # gaussian length
         rel_gate = gate_pos - drone_pos
-        r = 0.5
+        r = 0.2
         if curr_gate != self.prev_gate: # handle gate switching
             self.prev_gate_pos = gate_pos
-            if curr_gate > 0:
-                r += self.k_success
-            elif curr_gate < 0:
-                r += self.k_finish
+            r += self.k_success
+            if curr_gate < 0: # passed last gate
+                r += self.k_finish - (6.0*50 - self._tick) # positive when faster than 6.0s
 
         r_obst = -self.k_obst * np.linalg.norm(rel_xy_obst)
         r_obst_d = -self.k_obst_d * (np.linalg.norm(rel_xy_obst)) * (np.linalg.norm(self.prev_obst_xy - self.prev_drone_pos[:2]) - np.linalg.norm(obst_xy - drone_pos[:2]))
@@ -276,6 +275,13 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         r_act = -self.k_act * np.linalg.norm(act) - self.k_act_d * np.linalg.norm(act - self.prev_act)
         r_vel = self.k_vel * (1-np.linalg.norm(rel_xy_obst)) * np.linalg.norm(drone_vel)
         r_yaw = -self.k_yaw * np.fabs(R.from_quat(obs['quat']).as_euler('zyx', degrees=False)[0])
+        
+        # NOTE flip k_vel at 3rd, 4th gate
+        if curr_gate >= 2:
+            r_vel = 6*r_vel
+            y_exceed = drone_pos[1] - obs['gates_pos'][2][1]
+            if y_exceed > 0.0: # drone_y > 3rd_gate_y NOTE temporary reward term
+                r -= 0.3 * y_exceed
 
         # print(
         #     f"obst: {r_obst:.4f} | obst_d: {r_obst_d:.4f} | gates: {r_gates:.4f} | center: {r_center:.4f} | "
