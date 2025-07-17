@@ -30,8 +30,8 @@ AutoresetMode = None
 if Version(gymnasium.__version__) >= Version("1.1"):
     from gymnasium.vector import AutoresetMode
 
-RAND_INIT = True
-IMMITATION_LEARNING = True
+RAND_INIT = False
+IMMITATION_LEARNING = False
 if IMMITATION_LEARNING:
     from pathlib import Path
     from lsy_drone_racing.utils import load_config
@@ -230,13 +230,14 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         self.k_obst_d = 0.5
         self.k_gates = 2.0
         self.k_center = 0.3
-        self.k_vel = +0.04
+        self.k_vel = +0.1
         self.k_act = 0.01
         self.k_act_d = 0.001
         self.k_yaw = 0.1
         self.k_crash = 25
-        self.k_success = 40
-        self.k_imit = 0.4
+        self.k_success = 20
+        self.k_finish = 40
+        self.k_imit = 0.0
         # TODO: random reset at different racing process
         self.obs_env, info = self._reset(seed=seed, options=options)
         self.obs_env = {k: np.array(v[0, 0]) for k, v in self.obs_env.items()}
@@ -262,7 +263,11 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         r = 0.5
         if curr_gate != self.prev_gate: # handle gate switching
             self.prev_gate_pos = gate_pos
-            r += self.k_success
+            if curr_gate > 0:
+                r += self.k_success
+            elif curr_gate < 0:
+                r += self.k_finish
+
         r_obst = -self.k_obst * np.linalg.norm(rel_xy_obst)
         r_obst_d = -self.k_obst_d * (np.linalg.norm(rel_xy_obst)) * (np.linalg.norm(self.prev_obst_xy - self.prev_drone_pos[:2]) - np.linalg.norm(obst_xy - drone_pos[:2]))
         r_gates = self.k_gates * (np.linalg.norm(self.prev_gate_pos - self.prev_drone_pos) - np.linalg.norm(rel_gate))

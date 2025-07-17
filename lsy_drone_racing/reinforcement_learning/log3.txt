@@ -94,3 +94,19 @@ Train: lesson 4.2 Racing environment with random gate
     changes: remove imitation learning, add random gates
     result: 
     comments: 
+
+Train: lesson 4.3 Racing environment Level 2 
+    n_envs: 20
+    steps: 2 * 400000
+    duration: 38min
+    changes: remove imitation learning, add random gates
+    result: working fine observed success rate over 50%, avg 6s
+    comments: keep going
+    
+Train: lesson 4.4 Racing environment Level 2 
+    n_envs: 20
+    steps: 2 * 400000
+    duration: 38min
+    changes: add finish reward, remove rand init, +k_vel, flip k_vel at 3rd gate
+    result: working fine observed success rate over 50%, avg 6s
+    comments: keep going

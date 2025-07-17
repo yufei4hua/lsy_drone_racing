@@ -110,7 +110,7 @@ if __name__ == "__main__":
     print(f"Testing Lesson {lesson}.{lesson_train_idx}")
     model_paths = [
         latest_model_path,
-        # Path(__file__).parent / "log2/ppo_final_model",
+        Path(__file__).parent / "log3/ppo_final_model_4_1",
         # Path(__file__).parent / "log2/best_model",
         # Path(__file__).parent / "log/ppo_final_model_finish_race",
         # Path(__file__).parent / "log/ppo_final_model_hover_last",
