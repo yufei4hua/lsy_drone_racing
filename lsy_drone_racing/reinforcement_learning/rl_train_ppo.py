@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 import gymnasium as gym
 from gymnasium.wrappers.vector.jax_to_numpy import JaxToNumpy
-from gymnasium.wrappers.vector import RecordEpisodeStatistics, NormalizeReward, TransformReward
+from gymnasium.wrappers.vector import RecordEpisodeStatistics, NormalizeReward, NormalizeObservation
 import numpy as np
 import torch
 import torch.nn as nn
@@ -71,7 +71,7 @@ class Args:
     """the lambda for the general advantage estimation"""
     num_minibatches: int = 512
     """the number of mini-batches"""
-    update_epochs: int = 15
+    update_epochs: int = 10
     """the K epochs to update the policy"""
     norm_adv: bool = True
     """Toggles advantages normalization"""
@@ -97,20 +97,20 @@ class Args:
     """the number of iterations (computed in runtime)"""
 
     # region Reward Coef
-    k_alive:        float = 0.7
-    k_alive_anneal: float = 0.999 # anneal alive reward at every step
+    k_alive:        float = 0.4
+    k_alive_anneal: float = 1.0 # anneal alive reward at every step
     k_obst:         float = 0.0
     k_obst_d:       float = 0.0
     k_gates:        float = 4.0
     k_center:       float = 0.3
-    k_vel:          float = -0.1
+    k_vel:          float = -0.0
     k_act:          float = 0.1
     k_act_d:        float = 0.01
     k_yaw:          float = 0.1
-    k_crash:        float = 20.0
-    k_success:      float = 20.0
+    k_crash:        float = 5.0
+    k_success:      float = 40.0
     k_finish:       float = 40.0
-    k_imit:         float = 0.4
+    k_imit:         float = 0.0
     """REWARD PARAMETERS"""
 
 # load model
@@ -159,6 +159,7 @@ def make_env(config, args, gamma):
     ) # my custom wrapper
     env = RecordEpisodeStatistics(env) # for wandb log
     env = NormalizeReward(env, gamma=gamma) # might help
+    env = NormalizeObservation(env)
     # env = TransformReward(env, lambda reward: np.clip(reward, -10, 10))
     return env
 

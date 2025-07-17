@@ -11,6 +11,7 @@ import time
 from docs import conf
 from lsy_drone_racing.utils import load_config
 from lsy_drone_racing.reinforcement_learning.rl_drone_race import RLDroneRaceEnv, RLDroneHoverEnv, RenderCallback
+os.environ["JAX_PLATFORM_NAME"] = "cpu"
 
 # === 1. 创建训练环境 ===
 
@@ -58,7 +59,7 @@ def main():
     vec_env = SubprocVecEnv(env_fns)
 
     # === 2. 设置训练保存目录和回调 ===
-    log_dir = Path(__file__).parent / "log3"
+    log_dir = Path(__file__).parent / "log5"
     os.makedirs(log_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 

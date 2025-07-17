@@ -63,7 +63,7 @@ def main() -> None:
     env_fns    = [build_env_fn(n_world) for i in range(n_subproc)]
     env        = SubprocVecEnv(env_fns)
 
-    log_dir    = Path(__file__).parent / "log3"
+    log_dir    = Path(__file__).parent / "log5"
     log_dir.mkdir(exist_ok=True)
     time_tag   = datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -103,7 +103,7 @@ def main() -> None:
         print(f"▶ No previous model, training lesson {lesson}.0 from scratch")
 
     # ── train ──
-    model.learn(total_timesteps=2 * 400_000,
+    model.learn(total_timesteps=12 * 400_000,
                 callback=[ckpt_cb, eval_cb])
 
     # ── save ──
