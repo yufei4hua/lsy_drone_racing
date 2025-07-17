@@ -132,5 +132,21 @@ Train: lesson 4.7 Racing environment Level 2 (reset to 4.3)
     steps: 4 * 400000
     duration: 34min
     changes: -k_vel, with heavier penalty, lap time based finish reward
+    result: it worked! finally not rushing too much, not stable enough
+    comments: I say keep doing this for 1M
+
+Train: lesson 4.8 Racing environment Level 2
+    n_envs: 20
+    steps: 2 * 400000
+    duration: 17min
+    changes: -k_vel, with heavier penalty, lap time based finish reward
+    result: success rate increased a bit
+    comments: keep going
+
+Train: lesson 4.9 Racing environment Level 2
+    n_envs: 20
+    steps: 12 * 400000
+    duration: 100min
+    changes: add 3rd gate panalty 0.2m earlier
     result: 
     comments: 

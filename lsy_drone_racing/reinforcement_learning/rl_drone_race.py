@@ -230,13 +230,13 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         self.k_obst_d = 0.5
         self.k_gates = 2.0
         self.k_center = 0.3
-        self.k_vel = -0.025
+        self.k_vel = -0.03
         self.k_act = 0.01
         self.k_act_d = 0.001
         self.k_yaw = 0.1
         self.k_crash = 25
         self.k_success = 10
-        self.k_finish = 40
+        self.k_finish = 50
         self.k_imit = 0.0
         # TODO: random reset at different racing process
         self.obs_env, info = self._reset(seed=seed, options=options)
@@ -279,7 +279,7 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         # NOTE flip k_vel at 3rd, 4th gate
         if curr_gate >= 2:
             r_vel = 6*r_vel
-            y_exceed = drone_pos[1] - obs['gates_pos'][2][1]
+            y_exceed = drone_pos[1] - obs['gates_pos'][2][1] + 0.2
             if y_exceed > 0.0: # drone_y > 3rd_gate_y NOTE temporary reward term
                 r -= 0.3 * y_exceed
 
