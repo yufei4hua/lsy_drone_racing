@@ -161,3 +161,12 @@ Train: lesson 4.10 Racing environment Level 2 (0.5m sensor range)
     changes: add vel penalty before each gate, -y_exceed
     result: much slower, trajectory makes more sense, but adaptability still bad
     comments: positive velocity reward in between gates, +k_crash
+
+Train: lesson 4.11 Racing environment Level 2 (0.5m sensor range)
+    n_envs: 20
+    steps: 6 * 400000
+    duration: 38min
+    changes: vel reward and penalty at different phases, add some crash penalty
+    result: 
+    comments: 
+

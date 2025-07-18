@@ -50,7 +50,7 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         disturbances: ConfigDict | None = None,
         randomizations: ConfigDict | None = None,
         seed: int = 1337,
-        max_episode_steps: int = 1500,
+        max_episode_steps: int = 500,
         device: Literal["cpu", "gpu"] = "cpu",
     ):
         super().__init__(
@@ -227,16 +227,16 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
     def reset(self, seed=None, options=None):
         # parameters setting # 放到这儿好调参
         self.k_obst = 0.2
-        self.k_obst_d = 0.5
-        self.k_gates = 2.0
+        self.k_obst_d = 0.2
+        self.k_gates = 3.0
         self.k_center = 0.3
-        self.k_vel = -0.03
+        self.k_vel = +0.03
         self.k_act = 0.01
         self.k_act_d = 0.001
         self.k_yaw = 0.1
-        self.k_crash = 25
+        self.k_crash = 30
         self.k_success = 10
-        self.k_finish = 50
+        self.k_finish = 60
         self.k_imit = 0.0
         # TODO: random reset at different racing process
         self.obs_env, info = self._reset(seed=seed, options=options)
@@ -260,12 +260,12 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         obst_xy = self.rel_xy_obst + drone_pos[:2]
         rel_xy_obst = obs_rl[-6:-4] # gaussian length
         rel_gate = gate_pos - drone_pos
-        r = 0.2
+        r = 0.1
         if curr_gate != self.prev_gate: # handle gate switching
             self.prev_gate_pos = gate_pos
             r += self.k_success
             if curr_gate < 0: # passed last gate
-                r += self.k_finish - (6.0*50 - self._tick) # positive when faster than 6.0s
+                r += self.k_finish + (6.0*50 - self._tick) # positive when faster than 6.0s
 
         r_obst = -self.k_obst * np.linalg.norm(rel_xy_obst)
         r_obst_d = -self.k_obst_d * (np.linalg.norm(rel_xy_obst)) * (np.linalg.norm(self.prev_obst_xy - self.prev_drone_pos[:2]) - np.linalg.norm(obst_xy - drone_pos[:2]))
@@ -278,12 +278,16 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         
         # NOTE special reward for gates
         if curr_gate >= 2:
-            y_exceed = drone_pos[1] - obs['gates_pos'][2][1] + 0.2
+            y_exceed = drone_pos[1] - obs['gates_pos'][2][1]
             if y_exceed > 0.0: # drone_y > 3rd_gate_y NOTE temporary reward term
                 r -= 0.1 * y_exceed
+        if curr_gate == 1:
+            y_exceed = np.dot(rel_gate, gates_norm)
+            if y_exceed > 0.4: # NOTE temporary reward term
+                r -= 0.3 * y_exceed
         # increase velocity penalty when approaching gates (something like dyn qc)
-        if np.linalg.norm(rel_gate) < 1.5:
-            r_vel = 6*r_vel
+        if np.linalg.norm(rel_gate) < 0.7:
+            r_vel = -5*abs(r_vel)
 
 
         # print(
