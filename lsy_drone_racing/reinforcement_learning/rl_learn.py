@@ -59,7 +59,7 @@ def main():
     vec_env = SubprocVecEnv(env_fns)
 
     # === 2. 设置训练保存目录和回调 ===
-    log_dir = Path(__file__).parent / "log5"
+    log_dir = Path(__file__).parent / "log3"
     os.makedirs(log_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -94,7 +94,7 @@ def main():
 
     # === 4. 启动训练 ===
     if num_envs > 1:
-        model.learn(total_timesteps=12*400000, callback=[checkpoint_callback, eval_callback])
+        model.learn(total_timesteps=6*400000, callback=[checkpoint_callback, eval_callback])
     else: # for visualization
         render_callback = RenderCallback(render_freq=1)
         model.learn(total_timesteps=10000, callback=[render_callback])

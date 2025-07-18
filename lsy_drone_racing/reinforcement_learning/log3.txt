@@ -154,3 +154,10 @@ Train: lesson 4.9 Racing environment Level 2
               should add hard velocity penalty box 0.5m before the gates
               Additionally, is it a good idea to just apply mpcc cost as reward?
 
+Train: lesson 4.10 Racing environment Level 2 (0.5m sensor range)
+    n_envs: 20
+    steps: 6 * 400000
+    duration: 40min
+    changes: add vel penalty before each gate, -y_exceed
+    result: much slower, trajectory makes more sense, but adaptability still bad
+    comments: positive velocity reward in between gates, +k_crash
