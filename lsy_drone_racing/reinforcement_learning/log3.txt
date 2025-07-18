@@ -150,3 +150,7 @@ Train: lesson 4.9 Racing environment Level 2
     changes: add 3rd gate panalty 0.2m earlier
     result: 3rd gate finally normal, just like our mpcc trajectory. but first gate not stable
     comments: I just realized sensor range is set to infinite， need more train?
+              With infinite sensor range only 5/10, 5.91s; with 0.5m sensor range only 2/10
+              should add hard velocity penalty box 0.5m before the gates
+              Additionally, is it a good idea to just apply mpcc cost as reward?
+

@@ -103,7 +103,7 @@ def simulate(
             if config.sim.gui:
                 if ((i * fps) % config.env.freq) < fps:
                     env.render()
-                    time.sleep(1/config.env.freq)
+                    # time.sleep(1/config.env.freq)
             i += 1
 
         controller.episode_callback()  # Update the controller internal state and models.
