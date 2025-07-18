@@ -55,14 +55,14 @@ def make_eval_env(num_envs=1, device="cpu"):
 def main():
     log_dir = Path(__file__).parent / "log4"
     model_path = load_latest_model(log_dir)
-    model_path = Path(__file__).parent / "log4" / "rl_drone_racing_iter_30.pth"
+    model_path = Path(__file__).parent / "log4" / "rl_drone_racing_iter_15.pth"
 
     env = make_eval_env(num_envs=1)
     agent    = Agent(env).to("cpu")
     agent.load_state_dict(torch.load(model_path))
     # agent.eval()
 
-    EPISODES = 10
+    EPISODES = 20
     for ep in range(EPISODES):
         obs, _ = env.reset()
         obs    = torch.Tensor(obs)

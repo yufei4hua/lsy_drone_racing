@@ -36,6 +36,7 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
                  k_obst_d = 0.5,
                  k_gates = 2.0,
                  k_center = 0.3,
+                 k_center_d = 0.1,
                  k_vel = +0.04,
                  k_act = 0.01,
                  k_act_d = 0.001,
@@ -75,6 +76,7 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
         self.k_obst_d = k_obst_d
         self.k_gates = k_gates
         self.k_center = k_center
+        self.k_center_d = k_center_d
         self.k_vel = k_vel
         self.k_act = k_act
         self.k_act_d = k_act_d
@@ -104,12 +106,12 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
             num_reset = mask.sum()
             # manually recorded init points
             self.rand_init_list = [
-                {'pos': jp.array([1.0, 1.5, 0.07]), 'vel': jp.array([0.0, 0.0, 0.0]), 'quat': jp.array([0.0, 0.0, 0.0, 1.0]), 'f_thrust': 0.3, 'target_gate': 0}, # emphasize takeoff point
+                # {'pos': jp.array([1.0, 1.5, 0.07]), 'vel': jp.array([0.0, 0.0, 0.0]), 'quat': jp.array([0.0, 0.0, 0.0, 1.0]), 'f_thrust': 0.3, 'target_gate': 0}, # emphasize takeoff point
+                # {'pos': jp.array([1.0, 1.5, 0.07]), 'vel': jp.array([0.0, 0.0, 0.0]), 'quat': jp.array([0.0, 0.0, 0.0, 1.0]), 'f_thrust': 0.3, 'target_gate': 0},
+                # {'pos': jp.array([1.0, 1.5, 0.07]), 'vel': jp.array([0.0, 0.0, 0.0]), 'quat': jp.array([0.0, 0.0, 0.0, 1.0]), 'f_thrust': 0.3, 'target_gate': 0},
+                # {'pos': jp.array([1.0, 1.5, 0.07]), 'vel': jp.array([0.0, 0.0, 0.0]), 'quat': jp.array([0.0, 0.0, 0.0, 1.0]), 'f_thrust': 0.3, 'target_gate': 0},
                 {'pos': jp.array([1.0, 1.5, 0.07]), 'vel': jp.array([0.0, 0.0, 0.0]), 'quat': jp.array([0.0, 0.0, 0.0, 1.0]), 'f_thrust': 0.3, 'target_gate': 0},
-                {'pos': jp.array([1.0, 1.5, 0.07]), 'vel': jp.array([0.0, 0.0, 0.0]), 'quat': jp.array([0.0, 0.0, 0.0, 1.0]), 'f_thrust': 0.3, 'target_gate': 0},
-                {'pos': jp.array([1.0, 1.5, 0.07]), 'vel': jp.array([0.0, 0.0, 0.0]), 'quat': jp.array([0.0, 0.0, 0.0, 1.0]), 'f_thrust': 0.3, 'target_gate': 0},
-                {'pos': jp.array([1.0, 1.5, 0.07]), 'vel': jp.array([0.0, 0.0, 0.0]), 'quat': jp.array([0.0, 0.0, 0.0, 1.0]), 'f_thrust': 0.3, 'target_gate': 0},
-                # {'pos': jp.array([0.9081, 1.1422, 0.2201]), 'vel': jp.array([-0.2142, -0.7419, 0.2087]), 'quat': jp.array([0.1611, -0.0436, 0.0031, 0.9860]), 'f_thrust': 0.3179, 'target_gate': 0},
+                {'pos': jp.array([0.9081, 1.1422, 0.2201]), 'vel': jp.array([-0.2142, -0.7419, 0.2087]), 'quat': jp.array([0.1611, -0.0436, 0.0031, 0.9860]), 'f_thrust': 0.3179, 'target_gate': 0},
                 {'pos': jp.array([0.7550, 0.6635, 0.3080]), 'vel': jp.array([-0.2109, -0.7631, 0.1146]), 'quat': jp.array([0.0452, 0.0307, -0.0066, 0.9985]), 'f_thrust': 0.2883, 'target_gate': 0},
                 {'pos': jp.array([0.2309, -1.1061, 1.0188]), 'vel': jp.array([0.1798, -0.5673, 0.4537]), 'quat': jp.array([-0.0357, 0.0800, 0.0031, 0.9965]), 'f_thrust': 0.2255, 'target_gate': 1},
                 {'pos': jp.array([0.5624, -1.2678, 1.1197]), 'vel': jp.array([1.0049, 0.1084, 0.1169]), 'quat': jp.array([-0.0709, 0.0366, -0.0009, 0.9968]), 'f_thrust': 0.2705, 'target_gate': 1},
@@ -170,8 +172,8 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
 
     # region Step
     def step(self, action: np.ndarray):
-        # if IMMITATION_LEARNING: # test teacher policy
-        #     action = self.teacher_controller.compute_control(self.obs_env, None) - self._act_bias
+        if IMMITATION_LEARNING: # test teacher policy
+            action = self.teacher_controller.compute_control(self.obs_env, None) - self._act_bias
         action_exec = action + self._act_bias
         self.obs_env, _, terminated, truncated, info = self.env.step(action_exec)
         state = self._obs_to_state(self.obs_env, action)
@@ -309,7 +311,9 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
         r_gates = self.k_gates * (prev_gate_delta_pos - curr_gate_delta_pos)
         # reward: deviation from gate center line
         dot_rg = (rel_gate * gates_norm).sum(axis=1)
-        r_center = -self.k_center * np.linalg.norm(rel_gate - gates_norm * dot_rg[:, None], axis=1) / (np.linalg.norm(rel_gate, axis=1) + 1)
+        vec_center = rel_gate - gates_norm * dot_rg[:, None]
+        r_center = -self.k_center * np.linalg.norm(vec_center, axis=1) / (np.linalg.norm(rel_gate, axis=1) + 1)
+        r_center_d = self.k_center_d * (drone_vel * vec_center).sum(axis=1)
         # reward: smooth action
         r_act = -self.k_act * np.linalg.norm(act, axis=1) \
                 -self.k_act_d * np.linalg.norm(act - self._prev_act, axis=1)
@@ -321,7 +325,7 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
         r_yaw = -self.k_yaw * yaw
 
         # sum up
-        rewards += r_obst + r_obst_d + r_gates + r_center + r_act + r_vel + r_yaw
+        rewards += r_obst + r_obst_d + r_gates + r_center + r_center_d + r_act + r_vel + r_yaw
 
         # reward: immitation learning
         if IMMITATION_LEARNING:
@@ -330,10 +334,10 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
             rewards += r_imit
 
         # reward debug
-        # i = 8
+        # i = 0
         # print(
         #     f"alive:{self.k_alive * self.k_alive_anneal ** self._steps[i]:+.3f} | obst:{r_obst[i]:+.3f} | obst_d:{r_obst_d[i]:+.3f} | "
-        #     f"gates:{r_gates[i]:+.3f} | center:{r_center[i]:+.3f} | pass:{(self.k_success if prev_gate_delta[i] else 0.0):+.3f} | "
+        #     f"gates:{r_gates[i]:+.3f} | center:{r_center[i]:+.3f} | center_d:{r_center_d[i]:+.3f}  | pass:{(self.k_success if prev_gate_delta[i] else 0.0):+.3f} | "
         #     f"act:{r_act[i]:+.3f} | vel:{r_vel[i]:+.3f} | yaw:{r_yaw[i]:+.3f} | "
         #     f"imit:{r_imit[i]:+.3f} | "
         #     f"total:{rewards[i]:+.3f}"

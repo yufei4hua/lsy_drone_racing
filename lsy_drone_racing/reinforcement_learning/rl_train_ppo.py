@@ -61,7 +61,7 @@ class Args:
     """run jax envrionments on cpu/gpu"""
     num_envs: int = 1024
     """the number of parallel game environments"""
-    num_steps: int = 64
+    num_steps: int = 128
     """the number of steps to run in each environment per policy rollout"""
     anneal_lr: bool = True
     """Toggle learning rate annealing for policy and value networks"""
@@ -69,7 +69,7 @@ class Args:
     """the discount factor gamma"""
     gae_lambda: float = 0.95
     """the lambda for the general advantage estimation"""
-    num_minibatches: int = 512
+    num_minibatches: int = 1024
     """the number of mini-batches"""
     update_epochs: int = 10
     """the K epochs to update the policy"""
@@ -97,20 +97,21 @@ class Args:
     """the number of iterations (computed in runtime)"""
 
     # region Reward Coef
-    k_alive:        float = 0.4
+    k_alive:        float = 0.5
     k_alive_anneal: float = 1.0 # anneal alive reward at every step
     k_obst:         float = 0.0
     k_obst_d:       float = 0.0
     k_gates:        float = 4.0
     k_center:       float = 0.3
+    k_center_d:       float = 0.1
     k_vel:          float = -0.0
-    k_act:          float = 0.1
-    k_act_d:        float = 0.01
+    k_act:          float = 0.01
+    k_act_d:        float = 0.001
     k_yaw:          float = 0.1
-    k_crash:        float = 5.0
-    k_success:      float = 40.0
+    k_crash:        float = 25.0
+    k_success:      float = 100.0
     k_finish:       float = 40.0
-    k_imit:         float = 0.0
+    k_imit:         float = 1.0
     """REWARD PARAMETERS"""
 
 # load model
@@ -142,20 +143,21 @@ def make_env(config, args, gamma):
     env = JaxToNumpy(env)
     env = RLDroneRacingWrapper(
         env,
-        k_alive   = args.k_alive,
+        k_alive    = args.k_alive,
         k_alive_anneal  = Args.k_alive_anneal,
-        k_obst    = args.k_obst,
-        k_obst_d  = args.k_obst_d,
-        k_gates   = args.k_gates,
-        k_center  = args.k_center,
-        k_vel     = args.k_vel,
-        k_act     = args.k_act,
-        k_act_d   = args.k_act_d,
-        k_yaw     = args.k_yaw,
-        k_crash   = args.k_crash,
-        k_success = args.k_success,
-        k_finish  = args.k_finish,
-        k_imit    = args.k_imit,
+        k_obst     = args.k_obst,
+        k_obst_d   = args.k_obst_d,
+        k_gates    = args.k_gates,
+        k_center   = args.k_center,
+        k_center_d = args.k_center_d,
+        k_vel      = args.k_vel,
+        k_act      = args.k_act,
+        k_act_d    = args.k_act_d,
+        k_yaw      = args.k_yaw,
+        k_crash    = args.k_crash,
+        k_success  = args.k_success,
+        k_finish   = args.k_finish,
+        k_imit     = args.k_imit,
     ) # my custom wrapper
     env = RecordEpisodeStatistics(env) # for wandb log
     env = NormalizeReward(env, gamma=gamma) # might help
