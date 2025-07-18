@@ -148,5 +148,5 @@ Train: lesson 4.9 Racing environment Level 2
     steps: 12 * 400000
     duration: 100min
     changes: add 3rd gate panalty 0.2m earlier
-    result: 
-    comments: 
+    result: 3rd gate finally normal, just like our mpcc trajectory. but first gate not stable
+    comments: I just realized sensor range is set to infinite， need more train?
