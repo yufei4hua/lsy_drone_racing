@@ -13,7 +13,9 @@ c_generated_code/
 scripts/visualization.py
 scripts/sim.py
 /scripts
-lsy_drone_racing/reinforcement_learning/ppo*
+lsy_drone_racing/reinforcement_learning/log
+lsy_drone_racing/reinforcement_learning/log1
+lsy_drone_racing/reinforcement_learning/log2
 lsy_drone_racing/tools/glfw_test.py
 lsy_drone_racing/control/test_controller.py
 lsy_drone_racing/control/kino_A_star_with_replan_controller_backup.py
@@ -30,10 +32,10 @@ lsy_drone_racing/ros/rviz/meshes/scene.xml
 lsy_drone_racing/ros/rviz/visualization.rviz
 /config
 lsy_drone_racing/control/test_controller.py
-lsy_drone_racing/reinforcement_learning/
+# lsy_drone_racing/reinforcement_learning/
 runs/
 lsy_drone_racing/planned_trajectories/
 lsy_drone_racing/logs/roll_outs/roll_outs.csv
 wandb/
-**/*.zip
+# **/*.zip
 runs/
