@@ -127,7 +127,7 @@ def simulate(
     print("Mean Velocity:\t|" + '\t|'.join(f"{float(t):.2f}" for t in vel_avg) + '\t|')
     # Log all roll-out statistics to a csv file
     log_all_roll_outs(log_path=Path(log_dir), ep_times=ep_times, passed_gates=passed_gates, vel_max=vel_max, vel_avg=vel_avg)
-    ep_times = ep_pass
+    # ep_times = ep_pass
 
     return ep_times
 

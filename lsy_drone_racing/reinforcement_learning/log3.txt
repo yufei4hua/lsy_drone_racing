@@ -226,13 +226,29 @@ Train: lesson 4.18 Racing environment Level 2 (0.5m sensor range)
     result: 47% 4.51s
     comments: need more stability
 
-Train: lesson 4.18 Racing environment Level 2 (0.5m sensor range)
+Train: lesson 4.19 Racing environment Level 2 (0.5m sensor range)
     n_envs: 20
     steps: 5M
     duration: 70min
     changes: add finish reward, decrease success reward
     result: 41% 4.41s
     comments: not stable
+
+Train: lesson 4.20 Racing environment Level 2 (0.5m sensor range)
+    n_envs: 20
+    steps: 2M
+    duration: 20min
+    changes: +k_crash
+    result: 48% 4.59s 
+    comments: emphasize obstacles more
+
+Train: lesson 4.21 Racing environment Level 2 (0.5m sensor range)
+    n_envs: 20
+    steps: 2M
+    duration: 70min
+    changes: +k_obst
+    result: 
+    comments: 
 
 
 

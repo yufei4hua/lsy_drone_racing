@@ -229,12 +229,12 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         self.k_obst = 0.2
         self.k_obst_d = 0.2
         self.k_gates = 2.0
-        self.k_center = 0.3
+        self.k_center = 0.4
         self.k_vel = +0.00
         self.k_act = 0.01
         self.k_act_d = 0.001
         self.k_yaw = 0.1
-        self.k_crash = 35
+        self.k_crash = 40
         self.k_success = 15
         self.k_finish = 50
         self.k_imit = 0.0
