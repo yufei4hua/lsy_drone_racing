@@ -210,14 +210,29 @@ Train: lesson 4.16 Racing environment Level 0
     result: avg 2.99s in level 0
     comments: Ok, now we see the boundry of level 0  >_<!
 
-
 Train: lesson 4.17 Racing environment Level 2 (0.5m sensor range)
     n_envs: 20
-    steps: 10 * 500000
+    steps: 5M
     duration: 70min
     changes: 5M steps in level 2
-    result: 
-    comments: 
+    result: 48% 4.98s
+    comments: need more stability
+
+Train: lesson 4.18 Racing environment Level 2 (0.5m sensor range)
+    n_envs: 20
+    steps: 5M
+    duration: 70min
+    changes: 5M steps in level 2
+    result: 47% 4.51s
+    comments: need more stability
+
+Train: lesson 4.18 Racing environment Level 2 (0.5m sensor range)
+    n_envs: 20
+    steps: 5M
+    duration: 70min
+    changes: add finish reward, decrease success reward
+    result: 41% 4.41s
+    comments: not stable
 
 
 

@@ -6,7 +6,6 @@ from __future__ import annotations  # Python 3.10 type hints
 from typing import TYPE_CHECKING
 
 import numpy as np
-from scipy.interpolate import CubicSpline
 
 from lsy_drone_racing.control import Controller
 
@@ -78,6 +77,17 @@ class RLController(Controller):
 
         # return action
         self.action = action.squeeze() + self.act_bias
+
+        #region Visualization
+        if not hasattr(self, "trajectory_record"):
+            self.trajectory_record = []
+        self.trajectory_record.append(obs['pos'])
+        try:
+            draw_line(self.env, np.array(self.trajectory_record), rgba=self.hex2rgba("#2BFF00F9")) # recorded trajectory
+        except:
+            pass
+
+
         return self.action
 
     # region obs
@@ -149,6 +159,13 @@ class RLController(Controller):
                     return f, n
             raise FileNotFoundError(f"Model ppo_final_model_{lesson}_{idx}.zip not found in {log_path}")
         return latest_file, max_idx
+    
+    @staticmethod
+    def hex2rgba(hex="#FFFFFFFF"):
+        hex = hex.lstrip('#')
+        r, g, b, a = int(hex[0:2], 16), int(hex[2:4], 16), int(hex[4:6], 16), int(hex[6:8], 16)
+        rgba = np.array([r/255, g/255, b/255, a/255])
+        return rgba
 
     def step_callback(
         self,

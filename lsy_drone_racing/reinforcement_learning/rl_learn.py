@@ -8,7 +8,6 @@ import os
 import re
 from pathlib import Path
 import time
-from docs import conf
 from lsy_drone_racing.utils import load_config
 from lsy_drone_racing.reinforcement_learning.rl_drone_race import RLDroneRaceEnv, RLDroneHoverEnv, RenderCallback
 os.environ["JAX_PLATFORM_NAME"] = "cpu"

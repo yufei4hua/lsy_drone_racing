@@ -103,7 +103,7 @@ class Args:
     k_obst_d:       float = 0.0
     k_gates:        float = 4.0
     k_center:       float = 0.3
-    k_center_d:       float = 0.1
+    k_center_d:     float = 0.1
     k_vel:          float = -0.0
     k_act:          float = 0.01
     k_act_d:        float = 0.001
