@@ -107,7 +107,7 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         action_exec = action + self.act_bias
         self.obs_env, _, terminated, truncated, info = self._step(action_exec)
         self.obs_env = {k: np.array(v[0, 0]) for k, v in self.obs_env.items()}
-        info = {k: v[0, 0] for k, v in info.items()}
+        info = self.obs_env#{k: v[0, 0] for k, v in info.items()}
         self.traj_record = np.vstack([self.traj_record, self.obs_env['pos'][None, :]])
         self.obs_rl = self._obs_to_state(self.obs_env, action)
         reward = self._reward(self.obs_env, self.obs_rl, action)
@@ -229,14 +229,14 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         self.k_obst = 0.2
         self.k_obst_d = 0.2
         self.k_gates = 4.0
-        self.k_center = 0.3
+        self.k_center = 0.4
         self.k_vel = +0.00
         self.k_act = 0.01
         self.k_act_d = 0.001
         self.k_yaw = 0.1
         self.k_crash = 35
         self.k_success = 15
-        self.k_finish = 60
+        self.k_finish = 70
         self.k_imit = 0.0
         # TODO: random reset at different racing process
         self.obs_env, info = self._reset(seed=seed, options=options)
@@ -284,7 +284,7 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         if curr_gate != 2:
             # increase velocity penalty when approaching gates (something like dyn qc)
             if np.linalg.norm(rel_gate) < 0.3:
-                r_vel = -0.1 * np.linalg.norm(drone_vel)
+                r_vel = -0.08 * np.linalg.norm(drone_vel)
 
         if curr_gate == 1: # prevent going too far after passing first gate
             y_exceed = np.dot(rel_gate, gates_norm)

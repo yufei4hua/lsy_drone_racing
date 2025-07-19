@@ -96,8 +96,9 @@ def test_models(model_paths, num_episodes=999, render=True):
                 fps = 60
                 env.envs[0].render()
         vel_record = np.array(vel_record)
+        gate_pass = info[0]['target_gate']
         print(
-            f"Episode {ep + 1}: reward={episode_reward}, steps={step},"
+            f"Episode {ep + 1}: reward={episode_reward}, steps={step}, gate pass={4 if gate_pass < 0 else gate_pass}, "
             f"lap time={step/env.envs[0].freq}, max vel={np.max(vel_record):.2f}, avg vel={np.mean(vel_record):.2f}"
         )
 
@@ -110,8 +111,8 @@ if __name__ == "__main__":
     print(f"Testing Lesson {lesson}.{lesson_train_idx}")
     model_paths = [
         latest_model_path,
-        Path(__file__).parent / "log3/ppo_final_model_4_2",
-        # Path(__file__).parent / "log3/model_20250718_210619_1000000_steps",
+        Path(__file__).parent / "log3/ppo_final_model_4_16",
+        # Path(__file__).parent / "log3/model_20250719_052307_1000000_steps",
         # Path(__file__).parent / "log2/best_model",
         # Path(__file__).parent / "log/ppo_final_model_finish_race",
         # Path(__file__).parent / "log/ppo_final_model_hover_last",

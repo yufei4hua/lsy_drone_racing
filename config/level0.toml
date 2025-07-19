@@ -83,8 +83,8 @@ fn = "uniform"
 minval = [-0.1, -0.1, -0.1]
 maxval = [0.1, 0.1, 0.1]
 
-[env.randomizations.drone_mass]
-fn = "uniform"
-[env.randomizations.drone_mass.kwargs]
-minval = 0.006
-maxval = 0.008
+# [env.randomizations.drone_mass]
+# fn = "uniform"
+# [env.randomizations.drone_mass.kwargs]
+# minval = 0.006
+# maxval = 0.008
