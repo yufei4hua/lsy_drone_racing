@@ -277,19 +277,25 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         r_yaw = -self.k_yaw * np.fabs(R.from_quat(obs['quat']).as_euler('zyx', degrees=False)[0])
         
         # NOTE special reward for gates
+        # increase velocity penalty when approaching gates (something like dyn qc)
         if curr_gate >= 2: # prevent going too far after passing 3rd gate
             y_exceed = drone_pos[1] - obs['gates_pos'][2][1] - 0.2
             if y_exceed > 0.0: # drone_y > 3rd_gate_y NOTE temporary reward term
                 r -= 0.05 * y_exceed
-        if curr_gate == 0 or curr_gate == 3:
-            # increase velocity penalty when approaching gates (something like dyn qc)
-            if np.linalg.norm(rel_gate) < 0.6:
-                r_vel = -0.1 * np.linalg.norm(drone_vel)
-
-        if curr_gate == 1: # prevent going too far after passing first gate
-            y_exceed = np.dot(rel_gate, gates_norm)
-            if y_exceed > 0.6: # NOTE temporary reward term
+        if curr_gate == 0: # GATE 1
+            if np.linalg.norm(rel_gate) < 1.0:
+                r_vel = -0.12 * np.linalg.norm(drone_vel)
+        if curr_gate == 1: # GATE 2
+            if np.linalg.norm(rel_gate) < 0.3:
+                r_vel = -0.08 * np.linalg.norm(drone_vel)
+            y_exceed = np.dot(rel_gate, gates_norm) # prevent going too far after passing first gate
+            if y_exceed > 0.6:
                 r -= 0.05 * y_exceed
+        if curr_gate == 2: # GATE 3
+            pass
+        if curr_gate == 3: # GATE 4
+            if np.linalg.norm(rel_gate) < 0.6:
+                r_vel = -0.12 * np.linalg.norm(drone_vel)
 
 
         # print(

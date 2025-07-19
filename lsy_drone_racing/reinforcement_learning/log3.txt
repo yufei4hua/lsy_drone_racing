@@ -245,7 +245,7 @@ Train: lesson 4.20 Racing environment Level 2 (0.5m sensor range)
 Train: lesson 4.21 Racing environment Level 2 (0.5m sensor range)
     n_envs: 20
     steps: 2M
-    duration: 70min
+    duration: 30min
     changes: +k_obst
     result: 47% 4.58s
     comments: always fail at 1st gate, 4th gate.
@@ -253,10 +253,18 @@ Train: lesson 4.21 Racing environment Level 2 (0.5m sensor range)
 Train: lesson 4.22 Racing environment Level 2 (0.5m sensor range)
     n_envs: 20
     steps: 2M
-    duration: 70min
+    duration: 30min
     changes: +k_obst +k_vel at 1,4 gates, -k_gate
-    result: 
-    comments: 
+    result: 49% 4.47s
+    comments: same as before
+
+Train: lesson 4.23 Racing environment Level 2 (0.5m sensor range)
+    n_envs: 20
+    steps: 2M
+    duration: 30min
+    changes: +k_obst +k_vel at 1,4 gates, -k_gate
+    result: 49% 4.47s
+    comments: same as before
 
 
 
