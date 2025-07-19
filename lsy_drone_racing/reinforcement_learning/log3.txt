@@ -154,3 +154,85 @@ Train: lesson 4.9 Racing environment Level 2
               should add hard velocity penalty box 0.5m before the gates
               Additionally, is it a good idea to just apply mpcc cost as reward?
 
+Train: lesson 4.10 Racing environment Level 2 (0.5m sensor range)
+    n_envs: 20
+    steps: 6 * 400000
+    duration: 40min
+    changes: add vel penalty before each gate, -y_exceed
+    result: much slower, trajectory makes more sense, but adaptability still bad
+    comments: positive velocity reward in between gates, +k_crash
+
+Train: lesson 4.11 Racing environment Level 2 (0.5m sensor range)
+    n_envs: 20
+    steps: 6 * 400000
+    duration: 38min
+    changes: vel reward and penalty at different phases, add some crash penalty
+    result: trajectory looks beautiful, but neither stable nor fast
+    comments: 
+
+Train: lesson 4.12 Racing environment Level 2 (0.5m sensor range)
+    n_envs: 20
+    steps: 6 * 400000
+    duration: 38min
+    changes: add gate reward, decrease success reward, loosen 2nd gate exceed penalty
+    result: stop between 2, 3 gates
+    comments: 3rd gate penalty too strong
+
+Train: lesson 4.13 Racing environment Level 2 (0.5m sensor range)
+    n_envs: 20
+    steps: 3 * 400000
+    duration: 38min
+    changes: loosen 3nd gate exceed penalty
+    result: still a bit afraid of gate 3
+    comments: 
+
+Train: lesson 4.14 Racing environment Level 2 (0.5m sensor range)
+    n_envs: 20
+    steps: 3 * 400000
+    duration: 24min
+    changes: loosen 3nd gate exceed penalty
+    result: low success rate, sometimes fail touching 3rd gate
+    comments: 
+
+Train: lesson 4.15 Racing environment Level 2 (0.5m sensor range)
+    n_envs: 20
+    steps: 3 * 400000
+    duration: 24min
+    changes: penalize vel for 1,2,4gate, preserve exceeding penalty
+    result: better? 46% 6.39s
+    comments: 
+
+Train: lesson 4.16 Racing environment Level 0
+    n_envs: 20
+    steps: 20 * 500000
+    duration: 142min
+    changes: 10M steps in level 0 (Apparently I was too sleepy.)
+    result: avg 2.99s in level 0
+    comments: Ok, now we see the boundry of level 0  >_<!
+
+Train: lesson 4.17 Racing environment Level 2 (0.5m sensor range)
+    n_envs: 20
+    steps: 5M
+    duration: 70min
+    changes: 5M steps in level 2
+    result: 48% 4.98s
+    comments: need more stability
+
+Train: lesson 4.18 Racing environment Level 2 (0.5m sensor range)
+    n_envs: 20
+    steps: 5M
+    duration: 70min
+    changes: 5M steps in level 2
+    result: 47% 4.51s
+    comments: need more stability
+
+Train: lesson 4.18 Racing environment Level 2 (0.5m sensor range)
+    n_envs: 20
+    steps: 5M
+    duration: 70min
+    changes: add finish reward, decrease success reward
+    result: 41% 4.41s
+    comments: not stable
+
+
+

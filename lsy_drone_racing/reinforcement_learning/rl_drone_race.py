@@ -50,7 +50,7 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         disturbances: ConfigDict | None = None,
         randomizations: ConfigDict | None = None,
         seed: int = 1337,
-        max_episode_steps: int = 1500,
+        max_episode_steps: int = 500,
         device: Literal["cpu", "gpu"] = "cpu",
     ):
         super().__init__(
@@ -107,7 +107,7 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         action_exec = action + self.act_bias
         self.obs_env, _, terminated, truncated, info = self._step(action_exec)
         self.obs_env = {k: np.array(v[0, 0]) for k, v in self.obs_env.items()}
-        info = {k: v[0, 0] for k, v in info.items()}
+        info = self.obs_env#{k: v[0, 0] for k, v in info.items()}
         self.traj_record = np.vstack([self.traj_record, self.obs_env['pos'][None, :]])
         self.obs_rl = self._obs_to_state(self.obs_env, action)
         reward = self._reward(self.obs_env, self.obs_rl, action)
@@ -150,7 +150,7 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         dist = obst_dists[closest_obst_idx]
         self.rel_xy_obst_gaus = self.rel_xy_obst * np.exp(-(dist/(0.5*self.d_safe))**2) / (dist+1e-6)
         try:
-            draw_line(self, self.traj_record[0:-1:5], rgba=np.array([0.0, 1.0, 0.0, 0.2]))
+            draw_line(self, self.traj_record[0:-1:5], rgba=np.array([0.0, 1.0, 0.0, 1.0]))
             draw_line(self, np.stack([np.concatenate([self.rel_xy_obst_gaus, np.array([0])])+pos, pos]), rgba=np.array([1.0, 0.0, 1.0, 0.5]))
         except:
             pass
@@ -184,20 +184,20 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         if RAND_INIT:
             # manually recorded init points
             self.rand_init_list = [
-                {'pos': jp.array([1.0, 1.5, 0.07]), 'vel': jp.array([0.0, 0.0, 0.0]), 'quat': jp.array([0.0, 0.0, 0.0, 1.0]), 'f_thrust': 0.3, 'target_gate': 0}, # emphasize takeoff point
-                {'pos': jp.array([1.0, 1.5, 0.07]), 'vel': jp.array([0.0, 0.0, 0.0]), 'quat': jp.array([0.0, 0.0, 0.0, 1.0]), 'f_thrust': 0.3, 'target_gate': 0},
-                {'pos': jp.array([1.0, 1.5, 0.07]), 'vel': jp.array([0.0, 0.0, 0.0]), 'quat': jp.array([0.0, 0.0, 0.0, 1.0]), 'f_thrust': 0.3, 'target_gate': 0},
-                {'pos': jp.array([1.0, 1.5, 0.07]), 'vel': jp.array([0.0, 0.0, 0.0]), 'quat': jp.array([0.0, 0.0, 0.0, 1.0]), 'f_thrust': 0.3, 'target_gate': 0},
-                {'pos': jp.array([1.0, 1.5, 0.07]), 'vel': jp.array([0.0, 0.0, 0.0]), 'quat': jp.array([0.0, 0.0, 0.0, 1.0]), 'f_thrust': 0.3, 'target_gate': 0},
+                # {'pos': jp.array([1.0, 1.5, 0.07]), 'vel': jp.array([0.0, 0.0, 0.0]), 'quat': jp.array([0.0, 0.0, 0.0, 1.0]), 'f_thrust': 0.3, 'target_gate': 0}, # emphasize takeoff point
+                # {'pos': jp.array([1.0, 1.5, 0.07]), 'vel': jp.array([0.0, 0.0, 0.0]), 'quat': jp.array([0.0, 0.0, 0.0, 1.0]), 'f_thrust': 0.3, 'target_gate': 0},
+                # {'pos': jp.array([1.0, 1.5, 0.07]), 'vel': jp.array([0.0, 0.0, 0.0]), 'quat': jp.array([0.0, 0.0, 0.0, 1.0]), 'f_thrust': 0.3, 'target_gate': 0},
+                # {'pos': jp.array([1.0, 1.5, 0.07]), 'vel': jp.array([0.0, 0.0, 0.0]), 'quat': jp.array([0.0, 0.0, 0.0, 1.0]), 'f_thrust': 0.3, 'target_gate': 0},
+                # {'pos': jp.array([1.0, 1.5, 0.07]), 'vel': jp.array([0.0, 0.0, 0.0]), 'quat': jp.array([0.0, 0.0, 0.0, 1.0]), 'f_thrust': 0.3, 'target_gate': 0},
                 # {'pos': jp.array([0.9081, 1.1422, 0.2201]), 'vel': jp.array([-0.2142, -0.7419, 0.2087]), 'quat': jp.array([0.1611, -0.0436, 0.0031, 0.9860]), 'f_thrust': 0.3179, 'target_gate': 0},
-                # {'pos': jp.array([0.7550, 0.6635, 0.3080]), 'vel': jp.array([-0.2109, -0.7631, 0.1146]), 'quat': jp.array([0.0452, 0.0307, -0.0066, 0.9985]), 'f_thrust': 0.2883, 'target_gate': 0},
+                {'pos': jp.array([0.7550, 0.6635, 0.3080]), 'vel': jp.array([-0.2109, -0.7631, 0.1146]), 'quat': jp.array([0.0452, 0.0307, -0.0066, 0.9985]), 'f_thrust': 0.2883, 'target_gate': 0},
                 {'pos': jp.array([0.2309, -1.1061, 1.0188]), 'vel': jp.array([0.1798, -0.5673, 0.4537]), 'quat': jp.array([-0.0357, 0.0800, 0.0031, 0.9965]), 'f_thrust': 0.2255, 'target_gate': 1},
-                # {'pos': jp.array([0.5624, -1.2678, 1.1197]), 'vel': jp.array([1.0049, 0.1084, 0.1169]), 'quat': jp.array([-0.0709, 0.0366, -0.0009, 0.9968]), 'f_thrust': 0.2705, 'target_gate': 1},
+                {'pos': jp.array([0.5624, -1.2678, 1.1197]), 'vel': jp.array([1.0049, 0.1084, 0.1169]), 'quat': jp.array([-0.0709, 0.0366, -0.0009, 0.9968]), 'f_thrust': 0.2705, 'target_gate': 1},
                 {'pos': jp.array([1.1311, -0.8747, 1.1062]), 'vel': jp.array([0.0588, 1.0162, -0.1100]), 'quat': jp.array([-0.0605, -0.1642, -0.0146, 0.9845]), 'f_thrust': 0.2624, 'target_gate': 2},
-                # {'pos': jp.array([0.6138, -0.0001, 0.8368]), 'vel': jp.array([-0.5123, 0.6669, -0.3205]), 'quat': jp.array([-0.0417, -0.0282, 0.0048, 0.9987]), 'f_thrust': 0.2299, 'target_gate': 2},
-                # {'pos': jp.array([0.0045, 0.9539, 0.4696]), 'vel': jp.array([-0.1742, 0.8196, -0.0696]), 'quat': jp.array([0.1123, 0.0797, -0.0008, 0.9905]), 'f_thrust': 0.2878, 'target_gate': 2},
+                {'pos': jp.array([0.6138, -0.0001, 0.8368]), 'vel': jp.array([-0.5123, 0.6669, -0.3205]), 'quat': jp.array([-0.0417, -0.0282, 0.0048, 0.9987]), 'f_thrust': 0.2299, 'target_gate': 2},
+                {'pos': jp.array([0.0045, 0.9539, 0.4696]), 'vel': jp.array([-0.1742, 0.8196, -0.0696]), 'quat': jp.array([0.1123, 0.0797, -0.0008, 0.9905]), 'f_thrust': 0.2878, 'target_gate': 2},
                 {'pos': jp.array([-0.0996, 0.9104, 0.5883]), 'vel': jp.array([-0.3977, -0.8926, 0.0738]), 'quat': jp.array([0.0938, -0.0228, -0.0006, 0.9953]), 'f_thrust': 0.2662, 'target_gate': 3},
-                # {'pos': jp.array([-0.2380, 0.5384, 0.7121]), 'vel': jp.array([-0.3728, -1.1330, 0.7930]), 'quat': jp.array([-0.0511, -0.0051, -0.0002, 0.9987]), 'f_thrust': 0.3220, 'target_gate': 3},
+                {'pos': jp.array([-0.2380, 0.5384, 0.7121]), 'vel': jp.array([-0.3728, -1.1330, 0.7930]), 'quat': jp.array([-0.0511, -0.0051, -0.0002, 0.9987]), 'f_thrust': 0.3220, 'target_gate': 3},
             ]
 
             # randomly pick one init points
@@ -227,15 +227,15 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
     def reset(self, seed=None, options=None):
         # parameters setting # 放到这儿好调参
         self.k_obst = 0.2
-        self.k_obst_d = 0.5
+        self.k_obst_d = 0.2
         self.k_gates = 2.0
         self.k_center = 0.3
-        self.k_vel = -0.03
+        self.k_vel = +0.00
         self.k_act = 0.01
         self.k_act_d = 0.001
         self.k_yaw = 0.1
-        self.k_crash = 25
-        self.k_success = 10
+        self.k_crash = 35
+        self.k_success = 15
         self.k_finish = 50
         self.k_imit = 0.0
         # TODO: random reset at different racing process
@@ -260,12 +260,12 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         obst_xy = self.rel_xy_obst + drone_pos[:2]
         rel_xy_obst = obs_rl[-6:-4] # gaussian length
         rel_gate = gate_pos - drone_pos
-        r = 0.2
+        r = 0.0
         if curr_gate != self.prev_gate: # handle gate switching
             self.prev_gate_pos = gate_pos
             r += self.k_success
             if curr_gate < 0: # passed last gate
-                r += self.k_finish - (6.0*50 - self._tick) # positive when faster than 6.0s
+                r += self.k_finish + 2*(5.0*50 - self._tick) # positive when faster than 5.0s
 
         r_obst = -self.k_obst * np.linalg.norm(rel_xy_obst)
         r_obst_d = -self.k_obst_d * (np.linalg.norm(rel_xy_obst)) * (np.linalg.norm(self.prev_obst_xy - self.prev_drone_pos[:2]) - np.linalg.norm(obst_xy - drone_pos[:2]))
@@ -276,12 +276,21 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         r_vel = self.k_vel * (1-np.linalg.norm(rel_xy_obst)) * np.linalg.norm(drone_vel)
         r_yaw = -self.k_yaw * np.fabs(R.from_quat(obs['quat']).as_euler('zyx', degrees=False)[0])
         
-        # NOTE flip k_vel at 3rd, 4th gate
-        if curr_gate >= 2:
-            r_vel = 6*r_vel
-            y_exceed = drone_pos[1] - obs['gates_pos'][2][1] + 0.2
+        # NOTE special reward for gates
+        if curr_gate >= 2: # prevent going too far after passing 3rd gate
+            y_exceed = drone_pos[1] - obs['gates_pos'][2][1] - 0.2
             if y_exceed > 0.0: # drone_y > 3rd_gate_y NOTE temporary reward term
-                r -= 0.3 * y_exceed
+                r -= 0.05 * y_exceed
+        if curr_gate != 2:
+            # increase velocity penalty when approaching gates (something like dyn qc)
+            if np.linalg.norm(rel_gate) < 0.3:
+                r_vel = -0.08 * np.linalg.norm(drone_vel)
+
+        if curr_gate == 1: # prevent going too far after passing first gate
+            y_exceed = np.dot(rel_gate, gates_norm)
+            if y_exceed > 0.6: # NOTE temporary reward term
+                r -= 0.05 * y_exceed
+
 
         # print(
         #     f"obst: {r_obst:.4f} | obst_d: {r_obst_d:.4f} | gates: {r_gates:.4f} | center: {r_center:.4f} | "

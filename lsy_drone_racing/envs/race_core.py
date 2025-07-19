@@ -349,7 +349,7 @@ class RaceCoreEnv:
         self.sim.step(self.sim.freq // self.freq)
         # Warp drones that have crashed outside the track to prevent them from interfering with
         # other drones still in the race
-        self.sim.data = self._warp_disabled_drones(self.sim.data, self.data.disabled_drones)
+        # self.sim.data = self._warp_disabled_drones(self.sim.data, self.data.disabled_drones)
         # Apply the environment logic. Check which drones are now disabled, check which gates have
         # been passed, and update the target gate.
         drone_pos = self.sim.data.states.pos
