@@ -150,7 +150,7 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         dist = obst_dists[closest_obst_idx]
         self.rel_xy_obst_gaus = self.rel_xy_obst * np.exp(-(dist/(0.5*self.d_safe))**2) / (dist+1e-6)
         try:
-            draw_line(self, self.traj_record[0:-1:5], rgba=np.array([0.0, 1.0, 0.0, 0.2]))
+            draw_line(self, self.traj_record[0:-1:5], rgba=np.array([0.0, 1.0, 0.0, 1.0]))
             draw_line(self, np.stack([np.concatenate([self.rel_xy_obst_gaus, np.array([0])])+pos, pos]), rgba=np.array([1.0, 0.0, 1.0, 0.5]))
         except:
             pass

@@ -80,18 +80,18 @@ fn = "uniform"
 minval = [-0.1, -0.1, -0.1]
 maxval = [0.1, 0.1, 0.1]
 
-# # below are for level2 difficulty
-# [env.randomizations.drone_pos]
-# fn = "uniform"
-# [env.randomizations.drone_pos.kwargs]
-# minval = [-0.1, -0.1, 0.0]
-# maxval = [0.1, 0.1, 0.02]
+# below are for level2 difficulty
+[env.randomizations.drone_pos]
+fn = "uniform"
+[env.randomizations.drone_pos.kwargs]
+minval = [-0.1, -0.1, 0.0]
+maxval = [0.1, 0.1, 0.02]
 
-# [env.randomizations.drone_rpy]
-# fn = "uniform"
-# [env.randomizations.drone_rpy.kwargs]
-# minval = [-0.1, -0.1, -0.1]
-# maxval = [0.1, 0.1, 0.1]
+[env.randomizations.drone_rpy]
+fn = "uniform"
+[env.randomizations.drone_rpy.kwargs]
+minval = [-0.1, -0.1, -0.1]
+maxval = [0.1, 0.1, 0.1]
 
 [env.randomizations.drone_mass]
 fn = "uniform"
@@ -99,26 +99,26 @@ fn = "uniform"
 minval = 0.006
 maxval = 0.008
 
-# [env.randomizations.drone_inertia]
-# fn = "uniform"
-# [env.randomizations.drone_inertia.kwargs]
-# minval = [-0.000001, -0.000001, -0.000001]
-# maxval = [0.000001, 0.000001, 0.000001]
+[env.randomizations.drone_inertia]
+fn = "uniform"
+[env.randomizations.drone_inertia.kwargs]
+minval = [-0.000001, -0.000001, -0.000001]
+maxval = [0.000001, 0.000001, 0.000001]
 
-# [env.randomizations.gate_pos]
-# fn = "uniform"
-# [env.randomizations.gate_pos.kwargs]
-# minval = [-0.15, -0.15, -0.1]
-# maxval = [0.15, 0.15, 0.1]
+[env.randomizations.gate_pos]
+fn = "uniform"
+[env.randomizations.gate_pos.kwargs]
+minval = [-0.15, -0.15, -0.1]
+maxval = [0.15, 0.15, 0.1]
 
-# [env.randomizations.gate_rpy]
-# fn = "uniform"
-# [env.randomizations.gate_rpy.kwargs]
-# minval = [0.0, 0.0, -0.1]
-# maxval = [0.0, 0.0, 0.1]
+[env.randomizations.gate_rpy]
+fn = "uniform"
+[env.randomizations.gate_rpy.kwargs]
+minval = [0.0, 0.0, -0.1]
+maxval = [0.0, 0.0, 0.1]
 
-# [env.randomizations.obstacle_pos]
-# fn = "uniform"
-# [env.randomizations.obstacle_pos.kwargs]
-# minval = [-0.15, -0.15, -0.05]
-# maxval = [0.15, 0.15, 0.05]
+[env.randomizations.obstacle_pos]
+fn = "uniform"
+[env.randomizations.obstacle_pos.kwargs]
+minval = [-0.15, -0.15, -0.05]
+maxval = [0.15, 0.15, 0.05]
