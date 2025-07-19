@@ -167,6 +167,39 @@ Train: lesson 4.11 Racing environment Level 2 (0.5m sensor range)
     steps: 6 * 400000
     duration: 38min
     changes: vel reward and penalty at different phases, add some crash penalty
-    result: 
+    result: trajectory looks beautiful, but neither stable nor fast
     comments: 
+
+Train: lesson 4.12 Racing environment Level 2 (0.5m sensor range)
+    n_envs: 20
+    steps: 6 * 400000
+    duration: 38min
+    changes: add gate reward, decrease success reward, loosen 2nd gate exceed penalty
+    result: stop between 2, 3 gates
+    comments: 3rd gate penalty too strong
+
+Train: lesson 4.13 Racing environment Level 2 (0.5m sensor range)
+    n_envs: 20
+    steps: 3 * 400000
+    duration: 38min
+    changes: loosen 3nd gate exceed penalty
+    result: still a bit afraid of gate 3
+    comments: 
+
+Train: lesson 4.14 Racing environment Level 2 (0.5m sensor range)
+    n_envs: 20
+    steps: 3 * 400000
+    duration: 24min
+    changes: loosen 3nd gate exceed penalty
+    result: low success rate, sometimes fail touching 3rd gate
+    comments: 
+
+Train: lesson 4.15 Racing environment Level 2 (0.5m sensor range)
+    n_envs: 20
+    steps: 3 * 400000
+    duration: 24min
+    changes: penalize vel for 1,2,4gate, preserve exceeding penalty
+    result: better? 46% 6.39s
+    comments: 
+
 

@@ -111,7 +111,7 @@ if __name__ == "__main__":
     model_paths = [
         latest_model_path,
         Path(__file__).parent / "log3/ppo_final_model_4_2",
-        Path(__file__).parent / "log3/ppo_final_model_4_3",
+        # Path(__file__).parent / "log3/model_20250718_210619_1000000_steps",
         # Path(__file__).parent / "log2/best_model",
         # Path(__file__).parent / "log/ppo_final_model_finish_race",
         # Path(__file__).parent / "log/ppo_final_model_hover_last",

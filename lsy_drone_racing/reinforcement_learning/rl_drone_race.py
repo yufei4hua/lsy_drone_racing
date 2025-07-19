@@ -228,14 +228,14 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         # parameters setting # 放到这儿好调参
         self.k_obst = 0.2
         self.k_obst_d = 0.2
-        self.k_gates = 3.0
+        self.k_gates = 4.0
         self.k_center = 0.3
-        self.k_vel = +0.03
+        self.k_vel = +0.00
         self.k_act = 0.01
         self.k_act_d = 0.001
         self.k_yaw = 0.1
-        self.k_crash = 30
-        self.k_success = 10
+        self.k_crash = 35
+        self.k_success = 15
         self.k_finish = 60
         self.k_imit = 0.0
         # TODO: random reset at different racing process
@@ -260,7 +260,7 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         obst_xy = self.rel_xy_obst + drone_pos[:2]
         rel_xy_obst = obs_rl[-6:-4] # gaussian length
         rel_gate = gate_pos - drone_pos
-        r = 0.1
+        r = 0.0
         if curr_gate != self.prev_gate: # handle gate switching
             self.prev_gate_pos = gate_pos
             r += self.k_success
@@ -277,17 +277,19 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         r_yaw = -self.k_yaw * np.fabs(R.from_quat(obs['quat']).as_euler('zyx', degrees=False)[0])
         
         # NOTE special reward for gates
-        if curr_gate >= 2:
-            y_exceed = drone_pos[1] - obs['gates_pos'][2][1]
+        if curr_gate >= 2: # prevent going too far after passing 3rd gate
+            y_exceed = drone_pos[1] - obs['gates_pos'][2][1] - 0.2
             if y_exceed > 0.0: # drone_y > 3rd_gate_y NOTE temporary reward term
-                r -= 0.1 * y_exceed
-        if curr_gate == 1:
+                r -= 0.05 * y_exceed
+        if curr_gate != 2:
+            # increase velocity penalty when approaching gates (something like dyn qc)
+            if np.linalg.norm(rel_gate) < 0.3:
+                r_vel = -0.1 * np.linalg.norm(drone_vel)
+
+        if curr_gate == 1: # prevent going too far after passing first gate
             y_exceed = np.dot(rel_gate, gates_norm)
-            if y_exceed > 0.4: # NOTE temporary reward term
-                r -= 0.3 * y_exceed
-        # increase velocity penalty when approaching gates (something like dyn qc)
-        if np.linalg.norm(rel_gate) < 0.7:
-            r_vel = -5*abs(r_vel)
+            if y_exceed > 0.6: # NOTE temporary reward term
+                r -= 0.05 * y_exceed
 
 
         # print(
