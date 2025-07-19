@@ -226,16 +226,16 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
     # region reset
     def reset(self, seed=None, options=None):
         # parameters setting # 放到这儿好调参
-        self.k_obst = 0.2
+        self.k_obst = 0.6
         self.k_obst_d = 0.2
         self.k_gates = 2.0
-        self.k_center = 0.4
+        self.k_center = 0.5
         self.k_vel = +0.00
         self.k_act = 0.01
         self.k_act_d = 0.001
         self.k_yaw = 0.1
-        self.k_crash = 40
-        self.k_success = 15
+        self.k_crash = 45
+        self.k_success = 20
         self.k_finish = 50
         self.k_imit = 0.0
         # TODO: random reset at different racing process
@@ -281,10 +281,10 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
             y_exceed = drone_pos[1] - obs['gates_pos'][2][1] - 0.2
             if y_exceed > 0.0: # drone_y > 3rd_gate_y NOTE temporary reward term
                 r -= 0.05 * y_exceed
-        if curr_gate != 2:
+        if curr_gate == 0 or curr_gate == 3:
             # increase velocity penalty when approaching gates (something like dyn qc)
-            if np.linalg.norm(rel_gate) < 0.3:
-                r_vel = -0.08 * np.linalg.norm(drone_vel)
+            if np.linalg.norm(rel_gate) < 0.6:
+                r_vel = -0.1 * np.linalg.norm(drone_vel)
 
         if curr_gate == 1: # prevent going too far after passing first gate
             y_exceed = np.dot(rel_gate, gates_norm)
