@@ -62,7 +62,7 @@ def main():
     os.makedirs(log_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    checkpoint_callback = CheckpointCallback(save_freq=50000, save_path=log_dir, name_prefix=f"model_{timestamp}")
+    checkpoint_callback = CheckpointCallback(save_freq=1_000_000, save_path=log_dir, name_prefix=f"model_{timestamp}")
     eval_callback = EvalCallback(vec_env, best_model_save_path=log_dir, eval_freq=10000, n_eval_episodes=5)
 
     # === 3. 初始化 PPO 模型 ===
@@ -86,14 +86,14 @@ def main():
     )
     # 加载模型
     lesson = 4
-    lesson_train_idx = None # default None, use if need reset to earlier model
+    lesson_train_idx = 20 # default None, use if need reset to earlier model
     latest_model_path, lesson_train_idx = get_latest_model_path(log_dir, lesson, idx=lesson_train_idx)
     model = PPO.load(latest_model_path, env=vec_env, device="cpu")
     print(f"Learning Lesson {lesson}.{lesson_train_idx}")
 
     # === 4. 启动训练 ===
     if num_envs > 1:
-        model.learn(total_timesteps=2*1_000_000, callback=[checkpoint_callback, eval_callback])
+        model.learn(total_timesteps=20*1_000_000, callback=[checkpoint_callback, eval_callback])
     else: # for visualization
         render_callback = RenderCallback(render_freq=1)
         model.learn(total_timesteps=10000, callback=[render_callback])

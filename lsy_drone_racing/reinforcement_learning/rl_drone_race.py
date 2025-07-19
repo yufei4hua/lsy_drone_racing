@@ -226,16 +226,16 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
     # region reset
     def reset(self, seed=None, options=None):
         # parameters setting # 放到这儿好调参
-        self.k_obst = 0.6
+        self.k_obst = 0.7
         self.k_obst_d = 0.2
-        self.k_gates = 2.0
-        self.k_center = 0.5
+        self.k_gates = 1.0
+        self.k_center = 0.4
         self.k_vel = +0.00
         self.k_act = 0.01
         self.k_act_d = 0.001
         self.k_yaw = 0.1
         self.k_crash = 45
-        self.k_success = 20
+        self.k_success = 40
         self.k_finish = 50
         self.k_imit = 0.0
         # TODO: random reset at different racing process
@@ -262,8 +262,9 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         rel_gate = gate_pos - drone_pos
         r = 0.0
         if curr_gate != self.prev_gate: # handle gate switching
+            rel_prev_gate = self.prev_gate_pos - drone_pos
             self.prev_gate_pos = gate_pos
-            r += self.k_success
+            r += self.k_success * np.exp(-20 * np.linalg.norm(rel_prev_gate)) # encourage going through centers
             if curr_gate < 0: # passed last gate
                 r += self.k_finish + 2*(5.0*50 - self._tick) # positive when faster than 5.0s
 
@@ -284,18 +285,18 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
                 r -= 0.05 * y_exceed
         if curr_gate == 0: # GATE 1
             if np.linalg.norm(rel_gate) < 1.0:
-                r_vel = -0.12 * np.linalg.norm(drone_vel)
+                r_vel = -0.15 * np.linalg.norm(drone_vel)
         if curr_gate == 1: # GATE 2
-            if np.linalg.norm(rel_gate) < 0.3:
+            if np.linalg.norm(rel_gate) < 0.5:
                 r_vel = -0.08 * np.linalg.norm(drone_vel)
             y_exceed = np.dot(rel_gate, gates_norm) # prevent going too far after passing first gate
-            if y_exceed > 0.6:
-                r -= 0.05 * y_exceed
+            if y_exceed > 0.5:
+                r -= 0.1 * y_exceed
         if curr_gate == 2: # GATE 3
             pass
         if curr_gate == 3: # GATE 4
             if np.linalg.norm(rel_gate) < 0.6:
-                r_vel = -0.12 * np.linalg.norm(drone_vel)
+                r_vel = -0.15 * np.linalg.norm(drone_vel)
 
 
         # print(

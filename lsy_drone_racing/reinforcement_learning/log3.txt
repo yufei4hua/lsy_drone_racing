@@ -263,8 +263,24 @@ Train: lesson 4.23 Racing environment Level 2 (0.5m sensor range)
     steps: 2M
     duration: 30min
     changes: +k_obst +k_vel at 1,4 gates, -k_gate
-    result: 49% 4.47s
+    result: 44% 4.48s not so good
     comments: same as before
+
+Train: lesson 4.24 Racing environment Level 2 (0.5m sensor range)
+    n_envs: 20
+    steps: 2M
+    duration: 30min
+    changes: increase penalty, reset to 4.20
+    result: faster, even lower success rate
+    comments: 
+
+Train: lesson 4.24 Racing environment Level 2 (0.5m sensor range)
+    n_envs: 20
+    steps: 20M
+    duration: 140min
+    changes: increase penalty, add success reward based on position through gates, encouraging center pass
+    result: 
+    comments: 
 
 
 
