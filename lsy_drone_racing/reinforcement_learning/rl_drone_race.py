@@ -226,7 +226,7 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
     # region reset
     def reset(self, seed=None, options=None):
         # parameters setting # 放到这儿好调参
-        self.k_obst = 0.7
+        self.k_obst = 0.8
         self.k_obst_d = 0.2
         self.k_gates = 1.0
         self.k_center = 0.4
@@ -236,7 +236,7 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         self.k_yaw = 0.1
         self.k_crash = 45
         self.k_success = 40
-        self.k_finish = 50
+        self.k_finish = 60
         self.k_imit = 0.0
         # TODO: random reset at different racing process
         self.obs_env, info = self._reset(seed=seed, options=options)
@@ -257,6 +257,7 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         gates_norm = np.array(R.from_quat(obs['gates_quat']).as_matrix())[:,:,1][curr_gate]
         drone_pos = obs['pos']
         drone_vel = obs['vel']
+        drone_vel_norm = np.linalg.norm(drone_vel)
         obst_xy = self.rel_xy_obst + drone_pos[:2]
         rel_xy_obst = obs_rl[-6:-4] # gaussian length
         rel_gate = gate_pos - drone_pos
@@ -265,8 +266,8 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
             rel_prev_gate = self.prev_gate_pos - drone_pos
             self.prev_gate_pos = gate_pos
             r += self.k_success * np.exp(-20 * np.linalg.norm(rel_prev_gate)) # encourage going through centers
-            if curr_gate < 0: # passed last gate
-                r += self.k_finish + 2*(5.0*50 - self._tick) # positive when faster than 5.0s
+            # if curr_gate < 0: # passed last gate
+            #     r += self.k_finish + 2*(5.0*50 - self._tick) # positive when faster than 5.0s
 
         r_obst = -self.k_obst * np.linalg.norm(rel_xy_obst)
         r_obst_d = -self.k_obst_d * (np.linalg.norm(rel_xy_obst)) * (np.linalg.norm(self.prev_obst_xy - self.prev_drone_pos[:2]) - np.linalg.norm(obst_xy - drone_pos[:2]))
@@ -274,7 +275,7 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         # r_center = -self.k_center * (1 - np.abs(np.dot(rel_gate, gates_norm))/np.linalg.norm(rel_gate))
         r_center = -self.k_center * np.linalg.norm(rel_gate - gates_norm*np.dot(rel_gate, gates_norm))/(1+np.linalg.norm(rel_gate)) # err dist to center line
         r_act = -self.k_act * np.linalg.norm(act) - self.k_act_d * np.linalg.norm(act - self.prev_act)
-        r_vel = self.k_vel * (1-np.linalg.norm(rel_xy_obst)) * np.linalg.norm(drone_vel)
+        r_vel = self.k_vel * (1-np.linalg.norm(rel_xy_obst)) * drone_vel_norm
         r_yaw = -self.k_yaw * np.fabs(R.from_quat(obs['quat']).as_euler('zyx', degrees=False)[0])
         
         # NOTE special reward for gates
@@ -285,18 +286,18 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
                 r -= 0.05 * y_exceed
         if curr_gate == 0: # GATE 1
             if np.linalg.norm(rel_gate) < 1.0:
-                r_vel = -0.15 * np.linalg.norm(drone_vel)
+                r_vel = -0.15 * drone_vel_norm
         if curr_gate == 1: # GATE 2
-            if np.linalg.norm(rel_gate) < 0.5:
-                r_vel = -0.08 * np.linalg.norm(drone_vel)
+            if np.linalg.norm(rel_gate) < 0.4:
+                r_vel = -0.08 * drone_vel_norm
             y_exceed = np.dot(rel_gate, gates_norm) # prevent going too far after passing first gate
             if y_exceed > 0.5:
-                r -= 0.1 * y_exceed
+                r -= 0.15 * y_exceed
         if curr_gate == 2: # GATE 3
             pass
         if curr_gate == 3: # GATE 4
-            if np.linalg.norm(rel_gate) < 0.6:
-                r_vel = -0.15 * np.linalg.norm(drone_vel)
+            if np.linalg.norm(rel_gate) < 0.9:
+                r_vel = -0.2 * drone_vel_norm
 
 
         # print(

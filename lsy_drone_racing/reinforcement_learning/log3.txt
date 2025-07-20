@@ -282,5 +282,37 @@ Train: lesson 4.25 Racing environment Level 2 (0.5m sensor range)
     result: 57% 5.12s
     comments: show conservative behaviour at 2nd gate, but still rushing too fast at 4th gate
 
+Train: lesson 4.26 Racing environment Level 2 (0.5m sensor range)
+    n_envs: 20
+    steps: 2M
+    duration: 38min
+    changes: increase velocity penalty
+    result: 34% 4.56s
+    comments:
+
+Train: lesson 4.27 Racing environment Level 2 (0.5m sensor range)
+    n_envs: 20
+    steps: 2M
+    duration: 38min
+    changes: increase velocity penalty, obstacles penalty
+    result: still rushing towards gate 4
+    comments:
+
+Train: lesson 4.27 Racing environment Level 2 (0.5m sensor range)
+    n_envs: 20
+    steps: 2M
+    duration: 38min
+    changes: increase velocity penalty, obstacles penalty
+    result: 51% 4.96, still rushing towards gate 4
+    comments:
+
+Train: lesson 4.28 Racing environment Level 2 (0.5m sensor range)
+    n_envs: 20
+    steps: 4M
+    duration: 80min
+    changes: increase velocity penalty for gate 4, remove finish reward, reset to 4.25
+    result: 63% 5.89s: more stable at gate1, mostly fail at gate4. but slower
+    comments:
+
 
 
