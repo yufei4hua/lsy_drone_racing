@@ -274,13 +274,13 @@ Train: lesson 4.24 Racing environment Level 2 (0.5m sensor range)
     result: faster, even lower success rate
     comments: 
 
-Train: lesson 4.24 Racing environment Level 2 (0.5m sensor range)
+Train: lesson 4.25 Racing environment Level 2 (0.5m sensor range)
     n_envs: 20
     steps: 20M
-    duration: 140min
+    duration: 7h48min
     changes: increase penalty, add success reward based on position through gates, encouraging center pass
-    result: 
-    comments: 
+    result: 57% 5.12s
+    comments: show conservative behaviour at 2nd gate, but still rushing too fast at 4th gate
 
 
 
