@@ -111,15 +111,14 @@ if __name__ == "__main__":
     print(f"Testing Lesson {lesson}.{lesson_train_idx}")
     model_paths = [
         latest_model_path,
+        Path(__file__).parent / "log3/ppo_final_model_4_29",
+        Path(__file__).parent / "log3/ppo_final_model_4_28",
+        Path(__file__).parent / "log3/ppo_final_model_4_25",
+        Path(__file__).parent / "log3/ppo_final_model_4_20",
+        Path(__file__).parent / "log3/ppo_final_model_4_16",
         Path(__file__).parent / "log3/ppo_final_model_4_16",
         # Path(__file__).parent / "log3/model_20250719_052307_1000000_steps",
         # Path(__file__).parent / "log2/best_model",
-        # Path(__file__).parent / "log/ppo_final_model_finish_race",
-        # Path(__file__).parent / "log/ppo_final_model_hover_last",
-        # Path(__file__).parent / "log/ppo_final_model_gate_center",
-        # Path(__file__).parent / "log/ppo_final_model_wp_track",
-        # Path(__file__).parent / "log/ppo_final_model_scare_of_gate",
-        # Path(__file__).parent / "log/ppo_final_model_pass_then_climb",
     ]
     test_models(model_paths)
 

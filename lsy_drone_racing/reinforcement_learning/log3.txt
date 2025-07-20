@@ -314,5 +314,13 @@ Train: lesson 4.28 Racing environment Level 2 (0.5m sensor range)
     result: 63% 5.89s: more stable at gate1, mostly fail at gate4. but slower
     comments:
 
+Train: lesson 4.29 Racing environment Level 2 (0.5m sensor range)
+    n_envs: 20
+    steps: 2M
+    duration: 40min
+    changes: increase velocity penalty for gate 4, +k_gate (for taking off), -k_obst， reset to 4.25
+    result: 59% 4.89s
+    comments: look nice
+
 
 

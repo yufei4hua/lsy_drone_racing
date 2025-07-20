@@ -86,7 +86,7 @@ def main():
     )
     # 加载模型
     lesson = 4
-    lesson_train_idx = None # default None, use if need reset to earlier model
+    lesson_train_idx = 25 # default None, use if need reset to earlier model
     latest_model_path, lesson_train_idx = get_latest_model_path(log_dir, lesson, idx=lesson_train_idx)
     model = PPO.load(latest_model_path, env=vec_env, device="cpu")
     print(f"Learning Lesson {lesson}.{lesson_train_idx}")
