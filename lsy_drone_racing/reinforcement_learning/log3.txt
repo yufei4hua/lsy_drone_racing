@@ -320,7 +320,15 @@ Train: lesson 4.29 Racing environment Level 2 (0.5m sensor range)
     duration: 40min
     changes: increase velocity penalty for gate 4, +k_gate (for taking off), -k_obst， reset to 4.25
     result: 59% 4.89s
-    comments: look nice
+    comments: looks nice
+
+Train: lesson 4.30 Racing environment Level 2 (0.5m sensor range)
+    n_envs: 20
+    steps: 2M
+    duration: 40min
+    changes: keep training
+    result: 65% 4.91s
+    comments: not bad
 
 
 
