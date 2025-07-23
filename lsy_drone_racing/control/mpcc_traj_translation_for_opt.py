@@ -1,11 +1,12 @@
-"""This module implements an example MPC using attitude control for a quadrotor.
+"""MPCC with trajectory translation
+handle obstacles with integrated costs
+but handle gates by computing contour error on translated trajectory
+when approching the gates, shift the trajectory towards the gate offset
 
-It utilizes the collective thrust interface for drone control to compute control commands based on
-current state observations and desired waypoints.
-
-The waypoints are generated using cubic spline interpolation from a set of predefined waypoints.
-Note that the trajectory uses pre-defined waypoints instead of dynamically generating a good path.
+NOTE This file is simplified version, core modules including cost definition are in "lsy_drone_racing/tools/mpcc_controller/fresssack_mpcc"
+NOTE This file is for Bayesian Optimization
 """
+
 
 from __future__ import annotations  # Python 3.10 type hints
 

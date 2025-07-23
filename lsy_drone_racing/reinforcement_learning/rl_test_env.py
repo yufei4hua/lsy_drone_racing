@@ -111,13 +111,12 @@ if __name__ == "__main__":
     print(f"Testing Lesson {lesson}.{lesson_train_idx}")
     model_paths = [
         latest_model_path,
+        Path(__file__).parent / "log3/ppo_final_model_4_30",
         Path(__file__).parent / "log3/ppo_final_model_4_29",
         Path(__file__).parent / "log3/ppo_final_model_4_28",
         Path(__file__).parent / "log3/ppo_final_model_4_25",
         Path(__file__).parent / "log3/ppo_final_model_4_20",
         Path(__file__).parent / "log3/ppo_final_model_4_16",
-        Path(__file__).parent / "log3/ppo_final_model_4_16",
-        # Path(__file__).parent / "log3/model_20250719_052307_1000000_steps",
         # Path(__file__).parent / "log2/best_model",
     ]
     test_models(model_paths)

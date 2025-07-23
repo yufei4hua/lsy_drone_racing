@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     
 
 class EasyController(FresssackController):
-    """Trajectory controller following a pre-defined trajectory."""
+    """Naive implementation for finishing level 2 race course"""
 
     def __init__(self, obs: dict[str, NDArray[np.floating]], info: dict, config: dict, env = None, ros_tx_freq : np.floating = None):
         """Initialization of the controller.

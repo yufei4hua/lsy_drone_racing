@@ -1,10 +1,5 @@
-"""This module implements an example MPC using attitude control for a quadrotor.
-
-It utilizes the collective thrust interface for drone control to compute control commands based on
-current state observations and desired waypoints.
-
-The waypoints are generated using cubic spline interpolation from a set of predefined waypoints.
-Note that the trajectory uses pre-defined waypoints instead of dynamically generating a good path.
+"""MPCC based method, with obstacles & gates all modeled as costs
+for gate edges are also modeled as capsules to enforce the drone to go through the center
 """
 
 from __future__ import annotations  # Python 3.10 type hints

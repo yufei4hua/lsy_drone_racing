@@ -228,7 +228,7 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         # parameters setting # 放到这儿好调参
         self.k_obst = 0.0
         self.k_obst_d = 0.0
-        self.k_gates = 3.0
+        self.k_gates = 8.0
         self.k_center = 0.3
         self.k_vel = +0.00
         self.k_act = 0.01
@@ -236,7 +236,7 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
         self.k_yaw = 0.1
         self.k_crash = 45
         self.k_success = 50
-        self.k_finish = 60
+        self.k_finish = 10
         self.k_imit = 0.0
         # TODO: random reset at different racing process
         self.obs_env, info = self._reset(seed=seed, options=options)
@@ -266,8 +266,8 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
             rel_prev_gate = self.prev_gate_pos - drone_pos
             self.prev_gate_pos = gate_pos
             r += self.k_success * np.exp(-20 * np.linalg.norm(rel_prev_gate)) # encourage going through centers
-            # if curr_gate < 0: # passed last gate
-            #     r += self.k_finish + 2*(5.0*50 - self._tick) # positive when faster than 5.0s
+            if curr_gate < 0: # passed last gate
+                r += self.k_finish + 2*(5.0*50 - self._tick) # positive when faster than 5.0s
 
         r_obst = -self.k_obst * np.linalg.norm(rel_xy_obst)
         r_obst_d = -self.k_obst_d * (np.linalg.norm(rel_xy_obst)) * (np.linalg.norm(self.prev_obst_xy - self.prev_drone_pos[:2]) - np.linalg.norm(obst_xy - drone_pos[:2]))
@@ -285,21 +285,27 @@ class RLDroneRaceEnv(RaceCoreEnv, Env):
             if y_exceed > 0.0: # drone_y > 3rd_gate_y NOTE temporary reward term
                 r -= 0.05 * y_exceed
         if curr_gate == 0: # GATE 1
-            if np.linalg.norm(rel_gate) < 0.6:
+            if np.linalg.norm(rel_gate) < 1.0:
                 r_vel = -0.1 * drone_vel_norm
             else:
-                r_gates = 2 * r_gates
+                y_exceed = drone_pos[2] - gate_pos[2] + 0.2
+                if y_exceed > 0.0: # taking off too high
+                    r -= 0.15 * y_exceed
+                r_vel = -0.1 * drone_vel[2]
         if curr_gate == 1: # GATE 2
             if np.linalg.norm(rel_gate) < 0.4:
-                r_vel = -0.08 * drone_vel_norm
+                r_vel = -0.04 * drone_vel_norm
             y_exceed = np.dot(rel_gate, gates_norm) # prevent going too far after passing first gate
             if y_exceed > 0.5:
                 r -= 0.15 * y_exceed
         if curr_gate == 2: # GATE 3
             pass
         if curr_gate == 3: # GATE 4
-            if np.linalg.norm(rel_gate) < 1.0:
-                r_vel = -0.2 * drone_vel_norm
+            # if np.linalg.norm(rel_gate) < 1.0:
+            #     r_vel = -0.2 * drone_vel_norm
+            rel_gate_3 = obs['gates_pos'][2]-drone_pos
+            if np.linalg.norm(rel_gate_3) < 0.30:
+                r_center = -0.8 * np.linalg.norm(rel_gate_3 - gates_norm*np.dot(rel_gate_3, gates_norm))/(1+np.linalg.norm(rel_gate_3)) # err dist to center line
 
 
         # print(

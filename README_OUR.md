@@ -54,3 +54,10 @@ Examples of trajectory translation under different gate configurations.
 
 <img width="400" height="400" src="results/translation_demo_gate_3.png">
 <img width="400" height="400" src="results/translation_demo_gate_4.png">
+
+
+## Reinforcement Learning:
+### Level2: success rate 65% average 4.91s
+    python ./scripts/sim.py --config level2.toml --controller rl_controller.py --n_runs 10 -g
+### Level0: 2.99s
+    python ./scripts/sim.py --config level0.toml --controller rl_controller_fast.py --n_runs 10 -g
