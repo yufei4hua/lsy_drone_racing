@@ -20,7 +20,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 # lsy drone racing environment
 from lsy_drone_racing.envs.drone_race import VecDroneRaceEnv
-from lsy_drone_racing.reinforcement_learning.rl_env_wrapper import RLDroneRacingWrapper
+from lsy_drone_racing.clean_rl.rl_env_wrapper import RLDroneRacingWrapper
 from lsy_drone_racing.utils import load_config
 
 
@@ -37,7 +37,7 @@ class Args:
     """if toggled, `torch.backends.cudnn.deterministic=False`"""
     cuda: bool = True
     """if toggled, cuda will be enabled by default"""
-    track: bool = True
+    track: bool = False
     """if toggled, this experiment will be tracked with Weights and Biases"""
     wandb_project_name: str = "rl-drone-racing"
     """the wandb's project name"""
@@ -114,7 +114,7 @@ class Args:
     k_imit:         float = 1.0
     """REWARD PARAMETERS"""
 
-# load model
+# load model: searches for "rl_drone_racing_<largest_number>.pth"
 def load_latest_model(log_dir: Path) -> Path:
     import re
     patt = re.compile(r"rl_drone_racing_(\d+)\.pth$")
@@ -140,28 +140,14 @@ def make_env(config, args, gamma):
         seed           = config.env.seed,
         device         = args.dev_envs,
     )
-    env = JaxToNumpy(env)
+    env = JaxToNumpy(env) # omit this
     env = RLDroneRacingWrapper(
         env,
-        k_alive    = args.k_alive,
-        k_alive_anneal  = Args.k_alive_anneal,
-        k_obst     = args.k_obst,
-        k_obst_d   = args.k_obst_d,
-        k_gates    = args.k_gates,
-        k_center   = args.k_center,
-        k_center_d = args.k_center_d,
-        k_vel      = args.k_vel,
-        k_act      = args.k_act,
-        k_act_d    = args.k_act_d,
-        k_yaw      = args.k_yaw,
-        k_crash    = args.k_crash,
-        k_success  = args.k_success,
-        k_finish   = args.k_finish,
-        k_imit     = args.k_imit,
+        args = args,
     ) # my custom wrapper
     env = RecordEpisodeStatistics(env) # for wandb log
     env = NormalizeReward(env, gamma=gamma) # might help
-    env = NormalizeObservation(env)
+    # env = NormalizeObservation(env)
     # env = TransformReward(env, lambda reward: np.clip(reward, -10, 10))
     return env
 
@@ -305,7 +291,6 @@ if __name__ == "__main__":
             global_step += args.num_envs
             obs[step] = next_obs
             dones[step] = next_done
-
             # ALGO LOGIC: action logic
             with torch.no_grad():
                 action, logprob, _, value = agent.get_action_and_value(next_obs)
@@ -318,7 +303,7 @@ if __name__ == "__main__":
             next_done = np.logical_or(terminations, truncations)
             rewards[step] = torch.tensor(reward).to(device).view(-1)
             next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(next_done).to(device)
-                # envs.render()
+            # envs.render()
             if "episode" in infos:
                 ep_return += np.sum(infos['episode']['r'][infos['_episode']])
                 ep_length += np.sum(infos['episode']['l'][infos['_episode']])

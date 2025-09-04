@@ -13,14 +13,10 @@ from crazyflow.constants import GRAVITY, MASS
 from crazyflow.sim.physics import ang_vel2rpy_rates
 from lsy_drone_racing.utils import draw_line
 
-from lsy_drone_racing.tools import race_objects
-from lsy_drone_racing.envs.race_core import RaceCoreEnv, build_action_space, build_observation_space
-
 from jax import Array
-from ml_collections import ConfigDict
 from typing import Dict, Tuple
 
-IMMITATION_LEARNING = True
+IMMITATION_LEARNING = False
 if IMMITATION_LEARNING:
     from pathlib import Path
     from lsy_drone_racing.utils import load_config
@@ -30,21 +26,7 @@ RAND_INIT = True
 class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
     def __init__(self, 
                  env: VecDroneRaceEnv,
-                 k_alive = 0.5,
-                 k_alive_anneal = 0.1,
-                 k_obst = 0.2,
-                 k_obst_d = 0.5,
-                 k_gates = 2.0,
-                 k_center = 0.3,
-                 k_center_d = 0.1,
-                 k_vel = +0.04,
-                 k_act = 0.01,
-                 k_act_d = 0.001,
-                 k_yaw = 0.1,
-                 k_crash = 25,
-                 k_success = 40,
-                 k_finish = 60,
-                 k_imit = 0.4):
+                 args):
         super().__init__(env)
         # turn off autoreset
         env.unwrapped.autoreset = False
@@ -52,7 +34,7 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
         # create action & observation spaces
         self._num_envs = env.num_envs
         self.action_space = env.action_space
-        state_dim = 36
+        state_dim = 40
         lim = np.full(state_dim, np.inf, dtype=np.float32) # set to infinite for now
         self.single_observation_space = spaces.Box(-lim, lim, dtype=np.float32)
         self.observation_space = batch_space(self.single_observation_space, self._num_envs)
@@ -68,23 +50,10 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
         self._reset_env_data = self.find_attr(env, '_reset_env_data')
         self.obs = self.find_attr(env, 'obs')
         self.info = self.find_attr(env, 'info')
-        # region Param
-        """REWARD PARAMETERS"""
-        self.k_alive = k_alive
-        self.k_alive_anneal = k_alive_anneal
-        self.k_obst = k_obst
-        self.k_obst_d = k_obst_d
-        self.k_gates = k_gates
-        self.k_center = k_center
-        self.k_center_d = k_center_d
-        self.k_vel = k_vel
-        self.k_act = k_act
-        self.k_act_d = k_act_d
-        self.k_yaw = k_yaw
-        self.k_crash = k_crash
-        self.k_success = k_success
-        self.k_finish = k_finish
-        self.k_imit = k_imit
+        # assign all rl coef to self
+        for k, v in vars(args).items():
+            if k.startswith("k_"):
+                setattr(self, k, v)
 
     # region Reset
     @staticmethod
@@ -226,6 +195,8 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
         gate_quat = obs["gates_quat"][np.arange(N), curr_gate_idx]   # (N, 4)
         gate_pos  = obs["gates_pos"][np.arange(N), curr_gate_idx]    # (N, 3)
         gate_rot_mat = R.from_quat(gate_quat).as_matrix()
+        progress_onehot = np.zeros((N, 4), dtype=np.float32)
+        progress_onehot[np.arange(N), curr_gate_idx] = 1.0 # (N, 4)
 
         half_w, half_h = 0.2, 0.2
         corners_local = np.array([
@@ -261,8 +232,9 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
             rpy_rates,                  # (N, 3)
             rel_pos_gate.reshape(N, -1),# (N, 12)
             rel_xy_obst_gaus,           # (N, 2)
+            progress_onehot,            # (N, 4)
             action                      # (N, 4)
-        ], axis=-1).astype(np.float32)  # => (N, 36)
+        ], axis=-1).astype(np.float32)  # => (N, 40)
 
         # save to self just in case
         self.rel_pos_gate = rel_pos_gate     # (N, 4, 3)

@@ -1,0 +1,2 @@
+1. add one-hot vector to model input
+2. omit JaxtoNumpy wrapper, directly wrap on jax env
