@@ -1,2 +1,3 @@
-1. add one-hot vector to model input
+1. add one-hot vector to model input: checked
 2. omit JaxtoNumpy wrapper, directly wrap on jax env
+3. refine reward shaping: 

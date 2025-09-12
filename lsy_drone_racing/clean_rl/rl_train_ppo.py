@@ -11,6 +11,7 @@ from gymnasium.wrappers.vector.jax_to_numpy import JaxToNumpy
 from gymnasium.wrappers.vector import RecordEpisodeStatistics, NormalizeReward, NormalizeObservation
 import numpy as np
 import torch
+from torch import Tensor
 import torch.nn as nn
 import torch.optim as optim
 import tyro
@@ -175,44 +176,45 @@ class Agent(nn.Module):
             layer_init(nn.Linear(128, 1), std=1.0),
         )
 
-        # Actor: shared base, two output heads
-        self.actor_base = nn.Sequential(
+        # Actor: mean and logstd as parameters
+        self.actor_mean = nn.Sequential(
             layer_init(nn.Linear(obs_dim, 128)),
             nn.Tanh(),
             layer_init(nn.Linear(128, 128)),
             nn.Tanh(),
+            layer_init(nn.Linear(128, act_dim), std=0.01),
         )
-        self.actor_mean = layer_init(nn.Linear(128, act_dim), std=0.01)
-        # self.actor_logstd = layer_init(nn.Linear(128, act_dim), std=0.01)
         self.actor_logstd = nn.Parameter(torch.zeros(1, np.prod(envs.single_action_space.shape)))
 
-    def get_value(self, x):
+    def get_value(self, x: Tensor):
         return self.critic(x)
 
-    def get_action_and_value(self, x, action=None):
-        base = self.actor_base(x)
-        mean = self.actor_mean(base)
+    def get_action_and_value(self, x: Tensor, action: Tensor = None, deterministic: bool = False):
+        mean = self.actor_mean(x)
         # log_std = torch.clamp(self.actor_logstd(base), -5.0, 2.0) # important for training stability
         action_logstd = self.actor_logstd.expand_as(mean)
         std = torch.exp(action_logstd)
         dist = Normal(mean, std)
         if action is None:
-            action = dist.sample()
-            action = torch.clamp(action, torch.as_tensor(self.envs.single_action_space.low, device=action.device), torch.as_tensor(self.envs.single_action_space.high, device=action.device))        
+            action = dist.sample() if not deterministic else mean
+        action = torch.clamp(
+            action, 
+            torch.as_tensor(self.envs.single_action_space.low, device=action.device), 
+            torch.as_tensor(self.envs.single_action_space.high, device=action.device)
+        )
         return action, dist.log_prob(action).sum(1), dist.entropy().sum(1), self.critic(x)
     
-    @torch.no_grad()
-    def act(self, x, deterministic=True):
-        base = self.actor_base(x)
-        mean = self.actor_mean(base)
-        if deterministic:
-            return mean
-        action_logstd = self.actor_logstd.expand_as(mean)
-        std  = torch.exp(action_logstd)
-        dist = Normal(mean, std)
-        action = dist.sample()
-        action = torch.clamp(action, torch.as_tensor(self.envs.single_action_space.low, device=action.device), torch.as_tensor(self.envs.single_action_space.high, device=action.device))
-        return dist.sample()
+    # @torch.no_grad()
+    # def act(self, x, deterministic=True):
+    #     mean = self.actor_mean(x)
+    #     if deterministic:
+    #         return mean
+    #     action_logstd = self.actor_logstd.expand_as(mean)
+    #     std  = torch.exp(action_logstd)
+    #     dist = Normal(mean, std)
+    #     action = dist.sample()
+    #     action = torch.clamp(action, torch.as_tensor(self.envs.single_action_space.low, device=action.device), torch.as_tensor(self.envs.single_action_space.high, device=action.device))
+    #     return dist.sample()
 
 # region Main
 if __name__ == "__main__":
