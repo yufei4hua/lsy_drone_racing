@@ -39,7 +39,7 @@ class RLController(Controller):
         self.env = env # just for visualization
         
         # create model & load parameter
-        log_dir = Path(__file__).parent.parent / "reinforcement_learning/log3"
+        log_dir = Path(__file__).parent.parent / "reinforcement_learning/log5"
         # lesson = 4
         # model_path, model_idx = self.get_latest_model_path(log_dir, lesson)
         model_path = log_dir / "ppo_final_model_fastest_3s.zip"
