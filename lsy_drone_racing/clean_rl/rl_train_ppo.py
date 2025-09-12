@@ -416,14 +416,14 @@ if __name__ == "__main__":
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
 
         if args.save_model and iteration%5 == 0:
-            log_dir = Path(__file__).parent / "log4"
-            model_path = log_dir / f"rl_drone_racing_iter_{iteration}.pth"
+            log_dir = Path(__file__).parent / "log"
+            model_path = log_dir / f"checkpoint_iter_{iteration}.pth"
             torch.save(agent.state_dict(), model_path)
             print(f"model saved to {model_path}")
         
     if args.save_model:
         import re
-        log_dir = Path(__file__).parent / "log4"
+        log_dir = Path(__file__).parent / "log"
         log_dir.mkdir(parents=True, exist_ok=True)
 
         pattern = re.compile(rf"rl_drone_racing_(\d+)\.pth$")

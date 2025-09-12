@@ -21,7 +21,7 @@ if IMMITATION_LEARNING:
     from pathlib import Path
     from lsy_drone_racing.utils import load_config
     from rl_teacher_policy_att_pid import AttitudeController
-RAND_INIT = True
+RAND_INIT = False
 
 class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
     def __init__(self, 
@@ -141,8 +141,8 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
 
     # region Step
     def step(self, action: np.ndarray):
-        if IMMITATION_LEARNING: # test teacher policy
-            action = self.teacher_controller.compute_control(self.obs_env, None) - self._act_bias
+        # if IMMITATION_LEARNING: # test teacher policy
+        #     action = self.teacher_controller.compute_control(self.obs_env, None) - self._act_bias
         action_exec = action + self._act_bias
         self.obs_env, _, terminated, truncated, info = self.env.step(action_exec)
         state = self._obs_to_state(self.obs_env, action)
@@ -216,25 +216,35 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
         obst_dists  = np.linalg.norm(obst_rel_xy, axis=-1)                    # (N, n_obst)
         closest_idx = obst_dists.argmin(axis=-1)                              # (N,)
         rel_xy_obst = obst_rel_xy[np.arange(N), closest_idx]                  # (N, 2)
-        dist        = obst_dists[np.arange(N), closest_idx]                   # (N,)
-
-        rel_xy_obst_gaus = rel_xy_obst * np.exp(-(dist / (0.5 * self._d_safe))**2)[:, None] \
-                        / (dist[:, None] + 1e-6)                              # (N, 2)
-
+        # dist        = obst_dists[np.arange(N), closest_idx]                   # (N,)
+        # rel_xy_obst_gaus = rel_xy_obst * np.exp(-(dist / (0.5 * self._d_safe))**2)[:, None] \
+        #                 / (dist[:, None] + 1e-6)                              # (N, 2) # depricated
 
         rot_mat  = R.from_quat(quat).as_matrix().reshape(N, -1)               # (N, 9)
         rpy_rates = ang_vel2rpy_rates(ang_vel, quat)                          # (N, 3)
 
+        # EXP: manually normalize obs
+        obs_norm_coef = {
+            "pos": 0.6,
+            "vel": 0.2,
+            "rot_mat": 1.0,
+            "rpy_rates": 0.3,
+            "rel_pos_gate": 0.5,
+            "rel_xy_obst": 0.5,
+            "progress_onehot": 1.0,
+            "action": np.array([2.0, 1.5, 1.5, 2.0]),
+        }
+
         state = np.concatenate([
-            pos,                        # (N, 3)
-            vel,                        # (N, 3)
-            rot_mat,                    # (N, 9)
-            rpy_rates,                  # (N, 3)
-            rel_pos_gate.reshape(N, -1),# (N, 12)
-            rel_xy_obst_gaus,           # (N, 2)
-            progress_onehot,            # (N, 4)
-            action                      # (N, 4)
-        ], axis=-1).astype(np.float32)  # => (N, 40)
+            pos * obs_norm_coef["pos"], # (N, 3)
+            vel * obs_norm_coef["vel"], # (N, 3)
+            rot_mat * obs_norm_coef["rot_mat"], # (N, 9)
+            rpy_rates * obs_norm_coef["rpy_rates"], # (N, 3)
+            rel_pos_gate.reshape(N, -1) * obs_norm_coef["rel_pos_gate"], # (N, 12)
+            rel_xy_obst * obs_norm_coef["rel_xy_obst"], # (N, 2)
+            progress_onehot * obs_norm_coef["progress_onehot"], # (N, 4)
+            action * obs_norm_coef["action"] # (N, 4)
+        ], axis=-1).astype(np.float32) # => (N, 40)
 
         # save to self just in case
         self.rel_pos_gate = rel_pos_gate     # (N, 4, 3)
@@ -262,7 +272,10 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
         drone_vel   = obs["vel"]                                    # (N, 3)
         gates_pos   = obs["gates_pos"]                              # (N, n_gates, 3)
         gates_quat  = obs["gates_quat"]                             # (N, n_gates, 4)
-        rel_xy_obst_gaus = obs_rl[:, -6:-4]                         # (N, 2)
+        rel_xy_obst = obs_rl[:, -6:-4]                              # (N, 2)
+        dist = np.linalg.norm(rel_xy_obst)
+        rel_xy_obst_gaus = rel_xy_obst * np.exp(-(dist / (0.5 * self._d_safe))**2)[:, None] \
+                        / (dist[:, None] + 1e-6)                    # (N, 2)
         obst_xy     = self.rel_xy_obst + drone_pos[:, :2]           # (N, 2)
         gate_pos = gates_pos[np.arange(N), curr_gate]               # (N, 3)
         gate_quat = gates_quat[np.arange(N), curr_gate]             # (N, 4)
