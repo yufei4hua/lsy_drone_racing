@@ -16,7 +16,7 @@ from lsy_drone_racing.utils import draw_line
 from jax import Array
 from typing import Dict, Tuple
 
-IMMITATION_LEARNING = False
+IMMITATION_LEARNING = True
 if IMMITATION_LEARNING:
     from pathlib import Path
     from lsy_drone_racing.utils import load_config
@@ -42,8 +42,11 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
         self.obs_env = None
         self._d_safe = 1.0
         self._act_bias = np.array([MASS * GRAVITY, 0.0, 0.0, 0.0], dtype=np.float32)
-        self._prev_act = np.repeat(self._act_bias[None, :], self._num_envs, axis=0)
-        self._prev_gate = np.zeros(self._num_envs, dtype=int)
+        self._prev_drone_pos = np.zeros((self._num_envs, 3), dtype=np.float32)         # (N, 3)
+        self._prev_obst_xy   = np.zeros((self._num_envs, 2), dtype=np.float32)         # (N, 2)
+        self._prev_act       = np.repeat(self._act_bias[None, :], self._num_envs, axis=0)   # (N, A)
+        self._prev_gate      = np.zeros(self._num_envs, dtype=int)                          # (N,)
+        self._prev_gate_pos  = np.zeros((self._num_envs, 3), dtype=np.float32)         # (N, 3)
         self._steps = np.zeros(self._num_envs, dtype=int)
         # fetch properties and methods from core env
         self.sim = self.find_attr(env, 'sim')
@@ -117,19 +120,19 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
 
 
     def reset(self, *, seed: int | None = None, options: dict | None = None, mask: Array | None = None) -> Tuple[np.ndarray, Dict]:
+        mask = mask if mask is not None else np.ones(self._num_envs, dtype=bool)
         # call lower level reset
-        # obs, info = self.env.unwrapped._reset(seed=seed, mask=mask)
         obs, info = self._reset(seed=seed, mask=mask)
         self.obs_env = {k: jax_to_numpy(v[:, 0]) for k, v in obs.items()}
         info = {k: jax_to_numpy(v[:, 0]) for k, v in info.items()}
         state = self._obs_to_state(self.obs_env,
                                    np.repeat(self._act_bias[None, :], self._num_envs, axis=0))
         # reset storage
-        self._prev_drone_pos = self.obs_env['pos']
-        self._prev_obst_xy = self.obs_env['obstacles_pos'][:, 0, :2]
-        self._prev_act = np.repeat(self._act_bias[None, :], self._num_envs, axis=0)
-        self._prev_gate = np.zeros(self._num_envs, dtype=int)
-        self._prev_gate_pos = self.obs_env['gates_pos'][:, 0]
+        self._prev_drone_pos[mask] = self.obs_env["pos"][mask]
+        self._prev_obst_xy[mask]   = self.obs_env["obstacles_pos"][mask, 0, :2]
+        self._prev_act[mask]       = self._act_bias
+        self._prev_gate[mask]      = int(0)
+        self._prev_gate_pos[mask]  = self.obs_env["gates_pos"][mask, 0]  
         self._steps[mask] = int(0)
         if mask is None or mask[0]: # if the first world is reset
             self.traj_record = self.obs_env['pos'][0, :] # debug trajectory
@@ -141,8 +144,8 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
 
     # region Step
     def step(self, action: np.ndarray):
-        # if IMMITATION_LEARNING: # test teacher policy
-        #     action = self.teacher_controller.compute_control(self.obs_env, None) - self._act_bias
+        if IMMITATION_LEARNING: # test teacher policy
+            action = self.teacher_controller.compute_control(self.obs_env, None) - self._act_bias
         action_exec = action + self._act_bias
         self.obs_env, _, terminated, truncated, info = self.env.step(action_exec)
         state = self._obs_to_state(self.obs_env, action)
@@ -272,45 +275,52 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
         drone_vel   = obs["vel"]                                    # (N, 3)
         gates_pos   = obs["gates_pos"]                              # (N, n_gates, 3)
         gates_quat  = obs["gates_quat"]                             # (N, n_gates, 4)
-        rel_xy_obst = obs_rl[:, -6:-4]                              # (N, 2)
-        dist = np.linalg.norm(rel_xy_obst)
-        rel_xy_obst_gaus = rel_xy_obst * np.exp(-(dist / (0.5 * self._d_safe))**2)[:, None] \
-                        / (dist[:, None] + 1e-6)                    # (N, 2)
+        rel_xy_obst = obs_rl[:, 30:32]                              # (N, 2)
+        dist_obst = np.linalg.norm(rel_xy_obst, axis=1, keepdims=True)
+        rel_xy_obst_gaus = rel_xy_obst * np.exp(-(dist_obst / (0.5 * self._d_safe))**2) \
+                        / (dist_obst + 1e-6)               # (N, 2)
         obst_xy     = self.rel_xy_obst + drone_pos[:, :2]           # (N, 2)
         gate_pos = gates_pos[np.arange(N), curr_gate]               # (N, 3)
         gate_quat = gates_quat[np.arange(N), curr_gate]             # (N, 4)
         gates_norm = R.from_quat(gate_quat).as_matrix()[:, :, 1]    # (N, 3)
         rel_gate   = gate_pos - drone_pos                           # (N, 3)
-        # reward: success passing gates | handle gate switching
+        proj_norm = gates_norm * (rel_gate * gates_norm).sum(axis=1, keepdims=True) # vector projected to gate normal
+        proj_tang = rel_gate - proj_norm # vector from drone to gate center line
+        ## A. gate related
+        # 1. success passing gates | handle gate switching
         prev_gate_delta = (curr_gate != self._prev_gate)   # (N,) bool
         rewards[prev_gate_delta] += self.k_success         # gate pass reward
-        self._prev_gate_pos[prev_gate_delta] = gate_pos[prev_gate_delta] # update changed gates position
-        # reward: obstacle distance P&D
+        # 2. position based ellipsoid shape reward
+        norm2 =  (proj_norm ** 2).sum(axis=1)
+        tang2 =  (proj_tang ** 2).sum(axis=1)
+        r_pos = self.k_pos * np.exp(-(norm2 / (self.k_ellip_norm**2) + tang2 / (self.k_ellip_tang**2)))
+        # 3. velocity based rewards
+        #   3.1 gates approaching velocity
+        rel_gate_norm = rel_gate / (np.linalg.norm(rel_gate, axis=1, keepdims=True) + 1e-6) # (N, 3)
+        r_gates = self.k_gates * (drone_vel * rel_gate_norm).sum(axis=1) # velocity projecting to gate direction
+        #   3.2 deviation from gate center line
+        r_center_d = self.k_center_d * (drone_vel * proj_tang).sum(axis=1)
+        #   3.3 detour at gate sides
+        ratio = (proj_norm ** 2).sum(axis=1) / (np.sum(rel_gate**2, axis=1) + 1e-6) # sin(theta)^2
+        exp_factor = np.exp(-self.k_detour_scale * ratio)
+        r_detour = self.k_detour * (-(drone_vel * gates_norm).sum(axis=1)) * exp_factor
+        ## B. obstacle related
+        # 1. distance based penalty
         r_obst   = -self.k_obst * np.linalg.norm(rel_xy_obst_gaus, axis=1)
-        dist_now   = np.linalg.norm(obst_xy - drone_pos[:, :2], axis=1)
-        dist_prev  = np.linalg.norm(self._prev_obst_xy - self._prev_drone_pos[:, :2], axis=1)
-        r_obst_d = -self.k_obst_d * np.linalg.norm(rel_xy_obst_gaus, axis=1) * (dist_prev - dist_now)
-        # reward: gates distance D
-        prev_gate_delta_pos = np.linalg.norm(self._prev_gate_pos - self._prev_drone_pos, axis=1)
-        curr_gate_delta_pos = np.linalg.norm(rel_gate, axis=1)
-        r_gates = self.k_gates * (prev_gate_delta_pos - curr_gate_delta_pos)
-        # reward: deviation from gate center line
-        dot_rg = (rel_gate * gates_norm).sum(axis=1)
-        vec_center = rel_gate - gates_norm * dot_rg[:, None]
-        r_center = -self.k_center * np.linalg.norm(vec_center, axis=1) / (np.linalg.norm(rel_gate, axis=1) + 1)
-        r_center_d = self.k_center_d * (drone_vel * vec_center).sum(axis=1)
-        # reward: smooth action
+        # 2. velocity based penalty
+        r_obst_d = -self.k_obst_d * (drone_vel[:, :2] * rel_xy_obst_gaus).sum(axis=1)
+        ## C. other rewards
+        # 1. action smoothness
         r_act = -self.k_act * np.linalg.norm(act, axis=1) \
                 -self.k_act_d * np.linalg.norm(act - self._prev_act, axis=1)
-        # reward: velocity related
-        r_vel = self.k_vel * (1 + np.linalg.norm(rel_xy_obst_gaus, axis=1) - r_obst_d) \
-                * np.linalg.norm(drone_vel, axis=1)
-        # reward: yaw angle
-        yaw = np.sum(np.abs(R.from_quat(obs["quat"]).as_euler('zyx', degrees=False)), axis=-1)
+        # 2. velocity magnitude
+        r_vel = self.k_vel * np.linalg.norm(drone_vel, axis=1)
+        # 3. yaw angle penalty
+        yaw = np.abs(R.from_quat(obs["quat"]).as_euler('zyx', degrees=False))[:, 0]
         r_yaw = -self.k_yaw * yaw
 
         # sum up
-        rewards += r_obst + r_obst_d + r_gates + r_center + r_center_d + r_act + r_vel + r_yaw
+        rewards += r_pos + r_gates + r_center_d + r_detour + r_obst + r_obst_d + r_act + r_vel + r_yaw
 
         # reward: immitation learning
         if IMMITATION_LEARNING:
@@ -318,20 +328,21 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
             r_imit = -self.k_imit * np.linalg.norm(demo_action - act, axis=1)
             rewards += r_imit
 
-        # reward debug
+        # # reward debug
         # i = 0
         # print(
-        #     f"alive:{self.k_alive * self.k_alive_anneal ** self._steps[i]:+.3f} | obst:{r_obst[i]:+.3f} | obst_d:{r_obst_d[i]:+.3f} | "
-        #     f"gates:{r_gates[i]:+.3f} | center:{r_center[i]:+.3f} | center_d:{r_center_d[i]:+.3f}  | pass:{(self.k_success if prev_gate_delta[i] else 0.0):+.3f} | "
-        #     f"act:{r_act[i]:+.3f} | vel:{r_vel[i]:+.3f} | yaw:{r_yaw[i]:+.3f} | "
-        #     f"imit:{r_imit[i]:+.3f} | "
-        #     f"total:{rewards[i]:+.3f}"
+        #     f"alive:{self.k_alive * self.k_alive_anneal ** self._steps[i]:+.3f} | "
+        #     # f"obst:{r_obst[i]:+.3f} | obst_d:{r_obst_d[i]:+.3f} | "
+        #     f"pos:{r_pos[i]:+.3f} | gates:{r_gates[i]:+.3f} | center_d:{r_center_d[i]:+.3f} | "
+        #     f"detour:{r_detour[i]:+.3f} | "
+        #     f"pass:{(self.k_success if prev_gate_delta[i] else 0.0):+.3f} | act:{r_act[i]:+.3f} | vel:{r_vel[i]:+.3f} | yaw:{r_yaw[i]:+.3f}"
+        #     + (f" | imit:{r_imit[i]:+.3f}" if IMMITATION_LEARNING else "")
+        #     + f"\n |position:{r_pos[i]:+.3f} | velocity:{r_gates[i]+r_center_d[i]+r_detour[i]:+.3f} | total:{rewards[i]:+.3f}"
         # )
         
         # update saving
         self._prev_act        = act
         self._prev_gate       = curr_gate
-        self._prev_gate_pos   = gate_pos
         self._prev_obst_xy    = obst_xy
         self._prev_drone_pos  = drone_pos
 

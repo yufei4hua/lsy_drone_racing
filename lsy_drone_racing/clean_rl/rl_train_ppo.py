@@ -40,7 +40,7 @@ class Args:
     """if toggled, cuda will be enabled by default"""
     track: bool = False
     """if toggled, this experiment will be tracked with Weights and Biases"""
-    wandb_project_name: str = "rl-drone-racing"
+    wandb_project_name: str = "cleanrl-drone-racing"
     """the wandb's project name"""
     wandb_entity: str = "fresssack"
     """the entity (team) of wandb's project"""
@@ -54,11 +54,11 @@ class Args:
     # Algorithm specific arguments
     env_id: str = "DroneRacing-v0"
     """the id of the environment"""
-    total_timesteps: int = int(4e6)
+    total_timesteps: int = int(10e6)
     """total timesteps of the experiments"""
     learning_rate: float = 3e-4
     """the learning rate of the optimizer"""
-    dev_envs: str = "gpu"
+    dev_envs: str = "cpu"
     """run jax envrionments on cpu/gpu"""
     num_envs: int = 1024
     """the number of parallel game environments"""
@@ -98,21 +98,25 @@ class Args:
     """the number of iterations (computed in runtime)"""
 
     # region Reward Coef
-    k_alive:        float = 0.5
-    k_alive_anneal: float = 1.0 # anneal alive reward at every step
-    k_obst:         float = 0.0
-    k_obst_d:       float = 0.0
-    k_gates:        float = 4.0
-    k_center:       float = 0.3
-    k_center_d:     float = 0.1
-    k_vel:          float = -0.0
-    k_act:          float = 0.01
-    k_act_d:        float = 0.001
-    k_yaw:          float = 0.1
-    k_crash:        float = 25.0
-    k_success:      float = 100.0
-    k_finish:       float = 40.0
-    k_imit:         float = 1.0
+    k_alive:        float = 0.5   # alive reward for every step
+    k_alive_anneal: float = 1.0   # anneal alive reward at every step
+    k_pos:          float = 0.2   # position based reward coefficient
+    k_ellip_norm:   float = 0.4   # ellipse norm axis length
+    k_ellip_tang:   float = 0.9   # ellipse tang axis length
+    k_gates:        float = 1.0   # gate passing reward coefficient
+    k_center_d:     float = 0.8   # center velocity reward coefficient
+    k_detour:       float = 1.0   # detour penalty coefficient
+    k_detour_scale: float = 5.0   # detour penalty scaling factor: smaller -> wider penalty
+    k_obst:         float = 0.0   # obstacle proximity penalty coefficient
+    k_obst_d:       float = 0.0   # obstacle proximity derivative penalty coefficient
+    k_act:          float = 0.1  # action regularization coefficient
+    k_act_d:        float = 0.01 # action derivative regularization coefficient
+    k_vel:          float = -0.0  # velocity regularization coefficient
+    k_yaw:          float = 1.1   # yaw angle penalty coefficient
+    k_crash:        float = 25.0  # crash penalty coefficient
+    k_success:      float = 20.0 # gate passing reward coefficient
+    k_finish:       float = 40.0  # finish line reward coefficient
+    k_imit:         float = 0.0   # imitation learning reward coefficient
     """REWARD PARAMETERS"""
 
 # load model: searches for "rl_drone_racing_<largest_number>.pth"
@@ -259,7 +263,7 @@ if __name__ == "__main__":
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
     # region Load Model
-    log_dir = Path(__file__).parent / "log4"
+    log_dir = Path(__file__).parent / "log"
     if args.start_from_scratch == False:
         model_path = load_latest_model(log_dir)
         agent.load_state_dict(torch.load(model_path))
@@ -305,7 +309,7 @@ if __name__ == "__main__":
             next_done = np.logical_or(terminations, truncations)
             rewards[step] = torch.tensor(reward).to(device).view(-1)
             next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(next_done).to(device)
-            # envs.render()
+            envs.render()
             if "episode" in infos:
                 ep_return += np.sum(infos['episode']['r'][infos['_episode']])
                 ep_length += np.sum(infos['episode']['l'][infos['_episode']])
