@@ -16,7 +16,7 @@ from lsy_drone_racing.utils import draw_line
 from jax import Array
 from typing import Dict, Tuple
 
-IMMITATION_LEARNING = True
+IMMITATION_LEARNING = False
 if IMMITATION_LEARNING:
     from pathlib import Path
     from lsy_drone_racing.utils import load_config
@@ -144,8 +144,8 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
 
     # region Step
     def step(self, action: np.ndarray):
-        if IMMITATION_LEARNING: # test teacher policy
-            action = self.teacher_controller.compute_control(self.obs_env, None) - self._act_bias
+        # if IMMITATION_LEARNING: # test teacher policy
+        #     action = self.teacher_controller.compute_control(self.obs_env, None) - self._act_bias
         action_exec = action + self._act_bias
         self.obs_env, _, terminated, truncated, info = self.env.step(action_exec)
         state = self._obs_to_state(self.obs_env, action)

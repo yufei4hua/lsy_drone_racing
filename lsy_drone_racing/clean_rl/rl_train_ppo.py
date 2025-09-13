@@ -54,7 +54,7 @@ class Args:
     # Algorithm specific arguments
     env_id: str = "DroneRacing-v0"
     """the id of the environment"""
-    total_timesteps: int = int(10e6)
+    total_timesteps: int = int(4e6)
     """total timesteps of the experiments"""
     learning_rate: float = 3e-4
     """the learning rate of the optimizer"""
@@ -309,7 +309,7 @@ if __name__ == "__main__":
             next_done = np.logical_or(terminations, truncations)
             rewards[step] = torch.tensor(reward).to(device).view(-1)
             next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(next_done).to(device)
-            envs.render()
+            # envs.render()
             if "episode" in infos:
                 ep_return += np.sum(infos['episode']['r'][infos['_episode']])
                 ep_length += np.sum(infos['episode']['l'][infos['_episode']])

@@ -11,7 +11,8 @@ import torch
 from torch.distributions.normal import Normal
 
 from lsy_drone_racing.envs.drone_race import VecDroneRaceEnv
-from lsy_drone_racing.reinforcement_learning.rl_env_wrapper import RLDroneRacingWrapper
+from lsy_drone_racing.clean_rl.rl_env_wrapper import RLDroneRacingWrapper
+from lsy_drone_racing.clean_rl.rl_train_ppo import Args
 from lsy_drone_racing.utils import load_config
 from rl_train_ppo import load_latest_model, layer_init, make_env, Agent, Args
     
@@ -34,28 +35,15 @@ def make_eval_env(num_envs=1, device="cpu"):
     env   = JaxToNumpy(env)
     env = RLDroneRacingWrapper(
         env,
-        k_alive   = Args.k_alive,
-        k_alive_anneal  = Args.k_alive_anneal,
-        k_obst    = Args.k_obst,
-        k_obst_d  = Args.k_obst_d,
-        k_gates   = Args.k_gates,
-        k_center  = Args.k_center,
-        k_vel     = Args.k_vel,
-        k_act     = Args.k_act,
-        k_act_d   = Args.k_act_d,
-        k_yaw     = Args.k_yaw,
-        k_crash   = Args.k_crash,
-        k_success = Args.k_success,
-        k_finish  = Args.k_finish,
-        k_imit    = Args.k_imit,
+        args = Args,
     ) # my custom wrapper
     env   = RecordEpisodeStatistics(env)
     return env
 
 def main():
-    log_dir = Path(__file__).parent / "log4"
+    log_dir = Path(__file__).parent / "log"
     model_path = load_latest_model(log_dir)
-    model_path = Path(__file__).parent / "log4" / "rl_drone_racing_iter_15.pth"
+    model_path = Path(__file__).parent / "log" / "checkpoint_iter_30.pth"
 
     env = make_eval_env(num_envs=1)
     agent    = Agent(env).to("cpu")
