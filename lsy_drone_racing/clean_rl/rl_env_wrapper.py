@@ -21,7 +21,6 @@ if IMMITATION_LEARNING:
     from pathlib import Path
     from lsy_drone_racing.utils import load_config
     from rl_teacher_policy_att_pid import AttitudeController
-RAND_INIT = False
 
 class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
     def __init__(self, 
@@ -57,6 +56,7 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
         for k, v in vars(args).items():
             if k.startswith("k_"):
                 setattr(self, k, v)
+        self.rand_init = getattr(args, 'random_init', True)
 
     # region Reset
     @staticmethod
@@ -73,15 +73,15 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
             self.sim.seed(seed)
         self.sim.reset(mask=mask)
 
-        if RAND_INIT:
+        if self.rand_init:
             mask = mask if mask is not None else jp.ones(self.unwrapped.unwrapped.data.steps.shape, dtype=bool)
             num_reset = mask.sum()
             # manually recorded init points
             self.rand_init_list = [
-                # {'pos': jp.array([1.0, 1.5, 0.07]), 'vel': jp.array([0.0, 0.0, 0.0]), 'quat': jp.array([0.0, 0.0, 0.0, 1.0]), 'f_thrust': 0.3, 'target_gate': 0}, # emphasize takeoff point
-                # {'pos': jp.array([1.0, 1.5, 0.07]), 'vel': jp.array([0.0, 0.0, 0.0]), 'quat': jp.array([0.0, 0.0, 0.0, 1.0]), 'f_thrust': 0.3, 'target_gate': 0},
-                # {'pos': jp.array([1.0, 1.5, 0.07]), 'vel': jp.array([0.0, 0.0, 0.0]), 'quat': jp.array([0.0, 0.0, 0.0, 1.0]), 'f_thrust': 0.3, 'target_gate': 0},
-                # {'pos': jp.array([1.0, 1.5, 0.07]), 'vel': jp.array([0.0, 0.0, 0.0]), 'quat': jp.array([0.0, 0.0, 0.0, 1.0]), 'f_thrust': 0.3, 'target_gate': 0},
+                {'pos': jp.array([1.0, 1.5, 0.07]), 'vel': jp.array([0.0, 0.0, 0.0]), 'quat': jp.array([0.0, 0.0, 0.0, 1.0]), 'f_thrust': 0.3, 'target_gate': 0}, # emphasize takeoff point
+                {'pos': jp.array([1.0, 1.5, 0.07]), 'vel': jp.array([0.0, 0.0, 0.0]), 'quat': jp.array([0.0, 0.0, 0.0, 1.0]), 'f_thrust': 0.3, 'target_gate': 0},
+                {'pos': jp.array([1.0, 1.5, 0.07]), 'vel': jp.array([0.0, 0.0, 0.0]), 'quat': jp.array([0.0, 0.0, 0.0, 1.0]), 'f_thrust': 0.3, 'target_gate': 0},
+                {'pos': jp.array([1.0, 1.5, 0.07]), 'vel': jp.array([0.0, 0.0, 0.0]), 'quat': jp.array([0.0, 0.0, 0.0, 1.0]), 'f_thrust': 0.3, 'target_gate': 0},
                 {'pos': jp.array([1.0, 1.5, 0.07]), 'vel': jp.array([0.0, 0.0, 0.0]), 'quat': jp.array([0.0, 0.0, 0.0, 1.0]), 'f_thrust': 0.3, 'target_gate': 0},
                 {'pos': jp.array([0.9081, 1.1422, 0.2201]), 'vel': jp.array([-0.2142, -0.7419, 0.2087]), 'quat': jp.array([0.1611, -0.0436, 0.0031, 0.9860]), 'f_thrust': 0.3179, 'target_gate': 0},
                 {'pos': jp.array([0.7550, 0.6635, 0.3080]), 'vel': jp.array([-0.2109, -0.7631, 0.1146]), 'quat': jp.array([0.0452, 0.0307, -0.0066, 0.9985]), 'f_thrust': 0.2883, 'target_gate': 0},
@@ -109,7 +109,7 @@ class RLDroneRacingWrapper(gymnasium.vector.VectorWrapper):
             )
         self.unwrapped.unwrapped.data = self._reset_env_data(self.unwrapped.unwrapped.data, self.sim.data.states.pos, mask) # NOTE: self.unwrapped.unwrapped.data and self.sim.data are different
         
-        if RAND_INIT:
+        if self.rand_init:
             # correct self.unwrapped.unwrapped.data after _reset_env_data()
             self.unwrapped.unwrapped.data = self.unwrapped.unwrapped.data.replace(
                 target_gate=self.unwrapped.unwrapped.data.target_gate.at[mask].set(target_gate[:,None])

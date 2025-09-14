@@ -32,13 +32,15 @@ class Args:
     """the name of this experiment"""
     start_from_scratch: bool = True
     """start from scratch or load from latest checkpoint"""
+    random_init: bool = True
+    """whether to randomize the initial state"""
     seed: int = 1
     """seed of the experiment"""
     torch_deterministic: bool = True
     """if toggled, `torch.backends.cudnn.deterministic=False`"""
     cuda: bool = True
     """if toggled, cuda will be enabled by default"""
-    track: bool = False
+    track: bool = True
     """if toggled, this experiment will be tracked with Weights and Biases"""
     wandb_project_name: str = "cleanrl-drone-racing"
     """the wandb's project name"""
@@ -54,11 +56,11 @@ class Args:
     # Algorithm specific arguments
     env_id: str = "DroneRacing-v0"
     """the id of the environment"""
-    total_timesteps: int = int(4e6)
+    total_timesteps: int = int(10e6)
     """total timesteps of the experiments"""
     learning_rate: float = 3e-4
     """the learning rate of the optimizer"""
-    dev_envs: str = "cpu"
+    dev_envs: str = "gpu"
     """run jax envrionments on cpu/gpu"""
     num_envs: int = 1024
     """the number of parallel game environments"""
@@ -101,20 +103,20 @@ class Args:
     k_alive:        float = 0.5   # alive reward for every step
     k_alive_anneal: float = 1.0   # anneal alive reward at every step
     k_pos:          float = 0.2   # position based reward coefficient
-    k_ellip_norm:   float = 0.4   # ellipse norm axis length
-    k_ellip_tang:   float = 0.9   # ellipse tang axis length
+    k_ellip_norm:   float = 0.9   # ellipse norm axis length
+    k_ellip_tang:   float = 0.3   # ellipse tang axis length
     k_gates:        float = 1.0   # gate passing reward coefficient
-    k_center_d:     float = 0.8   # center velocity reward coefficient
-    k_detour:       float = 1.0   # detour penalty coefficient
-    k_detour_scale: float = 5.0   # detour penalty scaling factor: smaller -> wider penalty
+    k_center_d:     float = 0.5   # center velocity reward coefficient
+    k_detour:       float = 0.6   # detour penalty coefficient
+    k_detour_scale: float = 15.0  # detour penalty scaling factor: smaller -> wider range
     k_obst:         float = 0.0   # obstacle proximity penalty coefficient
     k_obst_d:       float = 0.0   # obstacle proximity derivative penalty coefficient
-    k_act:          float = 0.1  # action regularization coefficient
-    k_act_d:        float = 0.01 # action derivative regularization coefficient
+    k_act:          float = 0.1   # action regularization coefficient
+    k_act_d:        float = 0.01  # action derivative regularization coefficient
     k_vel:          float = -0.0  # velocity regularization coefficient
     k_yaw:          float = 1.1   # yaw angle penalty coefficient
     k_crash:        float = 25.0  # crash penalty coefficient
-    k_success:      float = 20.0 # gate passing reward coefficient
+    k_success:      float = 40.0  # gate passing reward coefficient
     k_finish:       float = 40.0  # finish line reward coefficient
     k_imit:         float = 0.0   # imitation learning reward coefficient
     """REWARD PARAMETERS"""
@@ -145,7 +147,7 @@ def make_env(config, args, gamma):
         seed           = config.env.seed,
         device         = args.dev_envs,
     )
-    env = JaxToNumpy(env) # omit this
+    env = JaxToNumpy(env) # try to omit this
     env = RLDroneRacingWrapper(
         env,
         args = args,
